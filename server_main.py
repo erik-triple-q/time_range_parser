@@ -109,6 +109,7 @@ def resolve_time_range(
         result = parse_time_range_full(
             text=text, tz=timezone, now_iso=now_iso
         )  # TODO: Pass fiscal_start_month
+
         return {
             "input": text,
             "timezone": result.timezone,
@@ -137,6 +138,7 @@ def resolve_time_range_simple(
     """
     try:
         result = parse_time_range_full(text=text, tz=timezone, now_iso=now_iso)
+
         return {
             "timezone": result.timezone,
             "start": result.start.set(microsecond=0).to_iso8601_string(),

@@ -13,31 +13,41 @@ from date_textparser.core import parse_time_range
 @pytest.fixture
 def now() -> datetime:
     """Maandag 2026-01-26 09:00 - maakt weekdag-tests ondubbelzinnig."""
-    return datetime(2026, 1, 26, 9, 0, 0)
+    dt = datetime(2026, 1, 26, 9, 0, 0)
+    print(f"\n🕒 Fixture 'now': {dt}")
+    return dt
 
 
 @pytest.fixture
 def now_friday() -> datetime:
     """Vrijdag 2026-01-30 14:00 - voor weekend-gerelateerde tests."""
-    return datetime(2026, 1, 30, 14, 0, 0)
+    dt = datetime(2026, 1, 30, 14, 0, 0)
+    print(f"\n🕒 Fixture 'now_friday': {dt}")
+    return dt
 
 
 @pytest.fixture
 def now_december() -> datetime:
     """December 2025 - voor jaar-overgang tests."""
-    return datetime(2025, 12, 15, 10, 0, 0)
+    dt = datetime(2025, 12, 15, 10, 0, 0)
+    print(f"\n🕒 Fixture 'now_december': {dt}")
+    return dt
 
 
 @pytest.fixture
 def now_end_of_year() -> datetime:
     """31 december 2025 - voor jaarwisseling tests."""
-    return datetime(2025, 12, 31, 10, 0, 0)
+    dt = datetime(2025, 12, 31, 10, 0, 0)
+    print(f"\n🕒 Fixture 'now_end_of_year': {dt}")
+    return dt
 
 
 @pytest.fixture
 def now_january() -> datetime:
     """Januari 2026 - voor vorige maand/jaar tests."""
-    return datetime(2026, 1, 15, 10, 0, 0)
+    dt = datetime(2026, 1, 15, 10, 0, 0)
+    print(f"\n🕒 Fixture 'now_january': {dt}")
+    return dt
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -298,6 +308,57 @@ class TestExplicitTimeRanges:
         expected_end = datetime(today.year, today.month, today.day, 12, 0, 0)
 
         print_result("van 8 tot 12", now, start, end, "Zonder 'uur' keyword")
+
+        assert start == expected_start
+        assert end == expected_end
+
+    # def test_swap_start_end_chronological(self):
+    #     """
+    #     Test dat start en end worden omgewisseld als start > end.
+    #     Specifiek scenario: "van 5 mei tot 1 mei".
+    #     """
+    #     now = datetime(2026, 1, 1, 12, 0, 0)
+
+    #     start, end = parse_time_range("van 5 mei tot 1 mei", now=now)
+
+    #     print_result("van 5 mei tot 1 mei", now, start, end, "Swap check")
+
+    #     # Verifieer dat start <= end (chronologisch)
+    #     assert start <= end
+
+    #     # Start moet 1 mei zijn
+    #     assert start.month == 5
+    #     assert start.day == 1
+    #     # End moet 5 mei zijn
+    #     assert end.month == 5
+    #     assert end.day == 5
+
+    def test_suffix_context_alignment(self):
+        """
+        Test dat 'tussen 1 en 2 gisteren' correct wordt uitgelijnd naar gisteren.
+        """
+        now = datetime(2026, 1, 1, 12, 0, 0)  # 1 jan
+        start, end = parse_time_range("tussen 1 en 2 gisteren", now=now)
+
+        # Beide moeten op 31 dec 2025 (gisteren) vallen
+        assert start.year == 2025 and start.month == 12 and start.day == 31
+        assert end.year == 2025 and end.month == 12 and end.day == 31
+
+        # Tijd moet 01:00 - 02:00 zijn
+        assert start.hour == 1
+        assert end.day == 31
+        assert end.hour == 2
+
+    def test_gisteren_tussen_1_en_2(self, now: datetime):
+        """'gisteren tussen 1 en 2' -> gisteren 01:00 - 02:00 (context prefix)."""
+        # now = Maandag 26 jan 2026
+        # gisteren = Zondag 25 jan
+        start, end = parse_time_range("gisteren tussen 1 en 2", now=now)
+
+        expected_start = datetime(2026, 1, 25, 1, 0, 0)
+        expected_end = datetime(2026, 1, 25, 2, 0, 0)
+
+        print_result("gisteren tussen 1 en 2", now, start, end, "Context prefix test")
 
         assert start == expected_start
         assert end == expected_end
@@ -1045,6 +1106,32 @@ class TestComplexPhrases:
         print_result("Eind 2024", now, start, end, "Eind van het jaar")
         assert start == datetime(2024, 12, 31, 0, 0, 0)
         assert end == end_of_day(start)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tests: System Date (Real-time check)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestSystemDate:
+    """Test met de daadwerkelijke systeemdatum (geen fixture)."""
+
+    def test_real_system_now(self):
+        """Gebruik datetime.now() om te zien of het werkt met de huidige tijd."""
+        real_now = datetime.now()
+        print(f"\n🕒 Real System Time: {real_now}")
+
+        start, end = parse_time_range("vandaag", now=real_now)
+        print_result(
+            "vandaag (real system time)",
+            real_now,
+            start,
+            end,
+            "Check met echte systeemklok",
+        )
+
+        assert start.date() == real_now.date()
+        assert end.date() == real_now.date()
 
 
 if __name__ == "__main__":

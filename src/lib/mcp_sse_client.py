@@ -94,7 +94,9 @@ class McpSseClient:
                             # If it's not an endpoint event, try to parse as JSON-RPC response
                             # Often JSON-RPC responses are delivered as SSE "message" events,
                             # or as default events without an explicit 'event:' line.
-                            if data:  # and (event_type is None or event_type == "message"): # More explicit check if needed
+                            if (
+                                data
+                            ):  # and (event_type is None or event_type == "message"): # More explicit check if needed
                                 _LOGGER.debug(
                                     "Attempting to parse SSE data as JSON: %s", data
                                 )
@@ -240,3 +242,33 @@ class McpSseClient:
         """
         _LOGGER.info("Sending notification method=%s", method)
         self._post({"jsonrpc": "2.0", "method": method, "params": params or {}})
+
+    def extract_result(self, response: dict[str, Any]) -> Any:
+        """
+        Helper to extract the content from a JSON-RPC response.
+
+        1. If 'error' is present, returns the error object.
+        2. If 'result' has 'content' (MCP standard), tries to parse the first text block as JSON.
+        3. Otherwise returns the raw 'result'.
+        """
+        if "error" in response:
+            return response["error"]
+
+        if "result" not in response:
+            return None
+
+        result = response["result"]
+
+        # Check for MCP content list
+        if (
+            isinstance(result, dict)
+            and "content" in result
+            and isinstance(result["content"], list)
+        ):
+            for item in result["content"]:
+                if item.get("type") == "text":
+                    text = item.get("text", "")
+                    try:
+                        return json.loads(text)
+                    except (json.JSONDecodeError, TypeError):
+                        return text

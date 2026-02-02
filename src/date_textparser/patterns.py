@@ -253,13 +253,25 @@ VAGUE_TIME_PATTERN = re.compile(
 # RANGE AND TIME PATTERNS
 # =============================================================================
 
+# RANGE_PATTERNS = [
+#     re.compile(r"\b(tussen)\b\s+(?P<a>.+?)\s+\b(en)\b\s+(?P<b>.+)$", re.IGNORECASE),
+#     re.compile(
+#         r"\b(van|from)\b\s+(?P<a>.+?)\s+\b(tot|t/m|tm|to|until)\b\s+(?P<b>.+)$",
+#         re.IGNORECASE,
+#     ),
+# ]
+
 RANGE_PATTERNS = [
-    re.compile(r"\b(tussen)\b\s+(?P<a>.+?)\s+\b(en)\b\s+(?P<b>.+)$", re.IGNORECASE),
     re.compile(
-        r"\b(van|from)\b\s+(?P<a>.+?)\s+\b(tot|t/m|tm|to|until)\b\s+(?P<b>.+)$",
+        r"\b(tussen)\b\s+(?P<a>[^,.;]+?)\s+\b(en)\b\s+(?P<b>[^,.;]+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(van|from)\b\s+(?P<a>[^,.;]+?)\s+\b(tot|t/m|tm|to|until)\b\s+(?P<b>[^,.;]+)",
         re.IGNORECASE,
     ),
 ]
+
 
 DASH_RANGE_PATTERN = re.compile(r"(?P<a>.+?)\s+-\s+(?P<b>.+)$")
 

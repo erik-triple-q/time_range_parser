@@ -43,6 +43,21 @@ ENGLISH_WEEKDAYS: dict[str, int] = {
 ALL_WEEKDAYS: dict[str, int] = {**DUTCH_WEEKDAYS, **ENGLISH_WEEKDAYS}
 
 # =============================================================================
+# RELATIVE DAYS
+# =============================================================================
+
+RELATIVE_DAYS: set[str] = {
+    "vandaag",
+    "morgen",
+    "overmorgen",
+    "gisteren",
+    "eergisteren",
+    "today",
+    "tomorrow",
+    "yesterday",
+}
+
+# =============================================================================
 # PERIOD UNITS
 # =============================================================================
 

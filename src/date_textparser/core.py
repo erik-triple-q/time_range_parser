@@ -33,11 +33,11 @@ from .vocabulary import (
     ALL_WEEKDAYS,
     DURATION_UNITS,
     PERIOD_UNITS,
+    RELATIVE_DAYS,
 )
 from .result import ParseResult
 from .parsers import (
     normalize_dutch_time,
-    find_range,
     has_time,
     has_date,
     parse_duration,
@@ -68,6 +68,7 @@ from .patterns import (
     FUTURE_PERIOD_PATTERN,
     NEXT_WEEKDAY_PATTERN,
     PREV_WEEKDAY_PATTERN,
+    RANGE_PATTERNS,
 )
 
 logger = logging.getLogger(__name__)
@@ -432,7 +433,44 @@ def _parse_time_range_internal(
             return _finalize_result(result)
 
     # 1) Explicit range
-    rng = find_range(normalized_text)
+    rng = None
+    for pattern in RANGE_PATTERNS:
+        m = pattern.search(normalized_text)
+        if m:
+            a_val = m.group("a")
+            b_val = m.group("b")
+            # Check for prefix context (e.g. "gisteren tussen 10 en 11")
+            prefix = ""
+            if m.start() > 0:
+                prefix = normalized_text[: m.start()].strip()
+
+            # Heuristic: if prefix OR suffix (b_val) implies a specific day,
+            # treat small numbers as time (e.g. "1" -> "1:00")
+            context_text = (prefix + " " + b_val).lower()
+            is_specific_day = any(w in context_text for w in RELATIVE_DAYS) or any(
+                w in context_text for w in ALL_WEEKDAYS
+            )
+
+            if is_specific_day:
+                if a_val.isdigit() and int(a_val) <= 24:
+                    a_val = f"{a_val}:00"
+
+                # Also fix b_val digits (e.g. "2 gisteren" -> "2:00 gisteren")
+                def _repl_time(match):
+                    val = int(match.group(1))
+                    if val <= 24:
+                        return f"{val}:00"
+                    return match.group(0)
+
+                b_val = re.sub(r"(?<![:.])\b(\d{1,2})\b(?![.:])", _repl_time, b_val)
+
+            if prefix:
+                logger.debug(f"Found prefix '{prefix}' for range, prepending to parts")
+                a_val = f"{prefix} {a_val}"
+                b_val = f"{prefix} {b_val}"
+            rng = (a_val, b_val)
+            break
+
     if rng:
         a, b = rng
         logger.debug(f"Found explicit range: '{a}' to '{b}'")
@@ -459,10 +497,19 @@ def _parse_time_range_internal(
             raise ValueError(f"Kon start niet parsen: {a!r}")
         start = _normalize_date_only(start_parsed, a)
 
-        end_parsed = _parse_end_with_start_base(b, start, tz)
-        if end_parsed is None:
-            raise ValueError(f"Kon eind niet parsen: {b!r}")
-        end = end_parsed
+        # FIX: If b has a date, parse it absolutely (relative to now), not relative to start.
+        # This prevents "1 mei" being parsed as next year (relative to start) when start is "5 mei".
+        if has_date(b):
+            end_parsed = _parse_dt(b, tz, base=now, prefer_future=False)
+            if end_parsed is None:
+                raise ValueError(f"Kon eind niet parsen: {b!r}")
+            # Note: end_of_day normalization happens below
+            end = _normalize_date_only(end_parsed, b)
+        else:
+            end_parsed = _parse_end_with_start_base(b, start, tz)
+            if end_parsed is None:
+                raise ValueError(f"Kon eind niet parsen: {b!r}")
+            end = end_parsed
 
         inferred_next_day = False
         if end < start and (not has_date(b)) and has_time(b):
@@ -472,6 +519,32 @@ def _parse_time_range_internal(
 
         if has_date(b) and not has_time(b):
             end = end.end_of("day")
+
+        # Suffix context fix: If 'a' has no date (e.g. "1"), but 'b' does (e.g. "2 gisteren"),
+        # and they ended up on different dates, align 'start' to 'end'.
+        if (not has_date(a)) and has_date(b):
+            if start.date() != end.date():
+                logger.debug(
+                    f"Aligning start date to end date (suffix context in '{b}')"
+                )
+                start = start.set(year=end.year, month=end.month, day=end.day)
+
+        # FIX: If start and end are same month but end is later year, assume typo and fix year.
+        # e.g. "van 5 mei tot 1 mei" -> parsed as May 5 2026 to May 1 2027.
+        if (
+            start.month == end.month
+            and end.year > start.year
+            and not re.search(r"\d{4}", b)
+        ):
+            logger.debug("Correcting end year (assumed typo in range with same month)")
+            end = end.set(year=start.year)
+
+        # Safety check: ensure chronological order (e.g. "tussen 1 en 2 gisteren")
+        if start > end:
+            logger.debug(
+                f"Swapping start and end because start > end ({start} > {end})"
+            )
+            start, end = end, start
 
         result = ParseResult(
             start=start,
@@ -626,7 +699,8 @@ def parse_time_range_full(
 
     tz = normalize_timezone(tz)
     if now_iso:
-        now = cast(pendulum.DateTime, pendulum.parse(now_iso)).in_timezone(tz)
+        parsed = pendulum.parse(now_iso, tz=tz)
+        now = cast(pendulum.DateTime, parsed).in_timezone(tz)
     else:
         now = pendulum.now(tz)
     return _parse_time_range_internal(text, tz, now, default_minutes=default_minutes)
@@ -677,7 +751,8 @@ def expand_recurrence(
     """
     tz = normalize_timezone(tz)
     if now_iso:
-        now = cast(pendulum.DateTime, pendulum.parse(now_iso)).in_timezone(tz)
+        parsed = pendulum.parse(now_iso, tz=tz)
+        now = cast(pendulum.DateTime, parsed).in_timezone(tz)
     else:
         now = pendulum.now(tz)
     normalized = text.lower()

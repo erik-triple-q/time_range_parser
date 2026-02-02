@@ -314,6 +314,25 @@ class TestPastPeriods:
         assert result.assumptions["kind"] == "past_period"
 
 
+class TestFuturePeriods:
+    """Tests for future period parsing (volgend kwartaal, etc.)."""
+
+    @pytest.fixture
+    def now(self):
+        """Reference date: January 30, 2026."""
+        return datetime(2026, 1, 30, 10, 0, 0)
+
+    def test_volgend_kwartaal(self, now):
+        # Now is Jan 2026 (Q1). Next quarter is Q2 (Apr-Jun).
+        start, end = parse_time_range("volgend kwartaal", now=now)
+        assert start == datetime(2026, 4, 1, 0, 0, 0)
+        assert end.month == 6
+        assert end.day == 30
+        assert end.hour == 23
+        assert end.minute == 59
+        assert end.second == 59
+
+
 class TestQuartersAndPastPeriodsIntegration:
     """Integration tests to ensure quarters and past periods work with other features."""
 

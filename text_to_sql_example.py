@@ -1,133 +1,119 @@
 import json
 import sys
-import threading
-import time
+import os
+from datetime import datetime
 
-try:
-    import requests
-except ImportError:
-    print("❌ Module 'requests' ontbreekt. Installeer met: uv add requests")
-    sys.exit(1)
+# Zorg dat we src/lib kunnen vinden
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+
+from lib.mcp_sse_client import McpSseClient
 
 # Configuratie
 HOST = "localhost"
 PORT = 9000
 BASE_URL = f"http://{HOST}:{PORT}"
-SSE_URL = f"{BASE_URL}/sse"
 
-# Shared state om het resultaat van de server op te vangen
-state = {
-    "endpoint": None,
-    "latest_result": None,
-    "stop_event": threading.Event()
-}
 
-def listen_sse():
-    """Luistert naar SSE events en vangt JSON-RPC responses op."""
-    try:
-        with requests.get(SSE_URL, stream=True) as response:
-            response.raise_for_status()
-            for line in response.iter_lines():
-                if state["stop_event"].is_set():
-                    break
-                if line:
-                    decoded = line.decode('utf-8')
-                    
-                    if decoded.startswith("data:") and "session_id=" in decoded:
-                        state["endpoint"] = decoded.replace("data:", "").strip()
-                    
-                    elif decoded.startswith("data:") and state["endpoint"]:
-                        content = decoded.replace("data:", "").strip()
-                        try:
-                            data = json.loads(content)
-                            # Als het een resultaat is van onze tool call
-                            if "result" in data:
-                                state["latest_result"] = data["result"]
-                        except json.JSONDecodeError:
-                            pass
-    except Exception:
-        pass
+def process_query(client, user_query: str, now_iso: str | None = None):
+    """
+    Stuurt de user_query naar de MCP tool en toont de gegenereerde SQL.
+    """
+    print(f"\n👤 User: '{user_query}'")
+    # We sturen de volledige query naar de tool. De parser probeert de tijd eruit te halen.
+    print(f"🔌 Agent: Roept tool 'resolve_time_range' aan...")
+
+    print(f"    (met now_iso={now_iso if now_iso else 'Server Default'})")
+
+    arguments = {"text": user_query}
+    if now_iso:
+        arguments["now_iso"] = now_iso
+
+    resp = client.request(
+        "tools/call",
+        {
+            "name": "resolve_time_range",
+            "arguments": arguments,
+        },
+        id=100,
+    )
+
+    # Verwerk resultaat
+    result = client.extract_result(resp)
+
+    if result is None:
+        print(f"⚠️ Geen resultaat ontvangen.")
+        return
+
+    if isinstance(result, dict):
+        # Check op RPC error
+        if "code" in result and "message" in result:
+            print(f"❌ RPC Error: {result}")
+            return
+
+        # Check op Tool error
+        if "error" in result:
+            print(f"❌ Server Error: {result['error']}")
+            return
+
+        # Happy path
+        start_iso = result.get("start")
+        end_iso = result.get("end")
+
+        if start_iso and end_iso:
+            print(f"✅ Server: {start_iso} t/m {end_iso}")
+
+            # SQL Generatie
+            sql = f"""
+SELECT sum(amount)
+FROM revenue
+WHERE created_at BETWEEN '{start_iso}' AND '{end_iso}';
+            """.strip()
+
+            print(f"\n📄 Gegenereerde SQL:\n{'-'*30}\n{sql}\n{'-'*30}")
+        else:
+            print(f"⚠️ Onverwacht antwoord formaat: {json.dumps(result, indent=2)}")
+    else:
+        print(f"⚠️ Kon content niet parsen als JSON of onverwacht formaat: {result}")
+
 
 def main():
     print(f"🤖 Text-to-SQL Agent Mock gestart...")
-    
-    # 1. Start verbinding
-    thread = threading.Thread(target=listen_sse, daemon=True)
-    thread.start()
 
-    # Wacht op sessie
-    timeout = 5
-    start = time.time()
-    while not state["endpoint"]:
-        if time.time() - start > timeout:
-            print("❌ Geen verbinding met server. Draait 'uv run python server_main.py'?")
-            return
-        time.sleep(0.1)
-
-    messages_url = f"{BASE_URL}{state['endpoint']}"
-    
-    def send_rpc(method, params=None, req_id=None):
-        payload = {"jsonrpc": "2.0", "method": method, "params": params or {}}
-        if req_id: payload["id"] = req_id
-        requests.post(messages_url, json=payload)
-
-    # Handshake
-    send_rpc("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "sql-agent", "version": "1.0"}}, 1)
-    send_rpc("notifications/initialized")
-    time.sleep(0.5)
-
-    # 2. Scenario
-    user_query = "Hoeveel omzet draaiden we vorig kwartaal?"
-    extracted_time = "vorig kwartaal"
-    
-    print(f"\n👤 User: '{user_query}'")
-    print(f"🧠 LLM: Tijdsaanduiding herkend: '{extracted_time}'")
-    print(f"🔌 LLM: Roept tool 'resolve_time_range' aan...")
-
-    # 3. Tool Call
-    send_rpc("tools/call", {
-        "name": "resolve_time_range",
-        "arguments": {
-            "text": extracted_time,
-            "now_iso": "2026-01-01T12:00:00"  # Fixed reference time for deterministic SQL
-        }
-    }, req_id=100)
-
-    # Wacht op antwoord
-    time.sleep(1)
-    
-    if state["latest_result"]:
-        # Parse het resultaat (MCP geeft content list terug)
-        content_json = state["latest_result"]["content"][0]["text"]
-        time_data = json.loads(content_json)
-        
-        if "error" in time_data:
-            print(f"❌ Server Error: {time_data['error']}")
-            if "Invalid unit" in str(time_data['error']) and "quarter" in str(time_data['error']):
-                print("\n💡 OORZAAK: De server draait nog oude code.")
-                print("   De fix voor 'quarter' staat wel op schijf, maar is nog niet geladen.")
-                print("   👉 Herstart je server proces (server_main.py of docker).")
-        else:
-            start_iso = time_data.get("start")
-            end_iso = time_data.get("end")
-            
-            if start_iso and end_iso:
-                print(f"✅ Server: {start_iso} t/m {end_iso}")
-                
-                # 4. SQL Generatie
-                sql = f"""
-SELECT sum(amount) 
-FROM revenue 
-WHERE created_at BETWEEN '{start_iso}' AND '{end_iso}';
-                """.strip()
-                
-                print(f"\n📄 Gegenereerde SQL:\n{'-'*30}\n{sql}\n{'-'*30}")
-            else:
-                print(f"⚠️ Onverwacht antwoord formaat: {json.dumps(time_data, indent=2)}")
+    if len(sys.argv) > 1:
+        user_query = sys.argv[1]
     else:
-        print("❌ Geen antwoord ontvangen van server.")
+        user_query = "Hoeveel omzet draaiden we vorig kwartaal?"
 
-    state["stop_event"].set()
+    try:
+        # McpSseClient handelt de SSE connectie en handshake af in __enter__
+        with McpSseClient(BASE_URL) as client:
+
+            # 1. Initialize (Handshake)
+            print("🔌 Initializing...")
+            init_resp = client.request(
+                "initialize",
+                {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "sql-agent", "version": "1.0"},
+                },
+                id=1,
+            )
+
+            if "error" in init_resp:
+                print(f"❌ Init Error: {init_resp['error']}")
+                return
+
+            client.notify("notifications/initialized")
+
+            # 2. Scenario's
+            process_query(client, user_query)
+
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        if "httpx" in str(e) or "Connection refused" in str(e):
+            print("💡 Check of de server draait en of 'httpx' geïnstalleerd is.")
+
 
 if __name__ == "__main__":
     main()
