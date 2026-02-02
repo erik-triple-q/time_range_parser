@@ -456,7 +456,7 @@ def _parse_time_range_internal(
                     a_val = f"{a_val}:00"
 
                 # Also fix b_val digits (e.g. "2 gisteren" -> "2:00 gisteren")
-                def _repl_time(match):
+                def _repl_time(match: re.Match[str]) -> str:
                     val = int(match.group(1))
                     if val <= 24:
                         return f"{val}:00"
