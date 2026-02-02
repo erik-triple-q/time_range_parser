@@ -1,0 +1,803 @@
+"""
+Date text parser for Dutch and English natural language date expressions.
+"""
+
+from __future__ import annotations
+
+try:
+    import dateparser
+except ImportError as e:
+    raise ImportError(
+        "Missing dependency 'dateparser'. Install project dependencies before running tests or using the package. "
+        "Run 'uv sync' or 'pip install -e .[dev]' from the project root."
+    ) from e
+import logging
+import re
+import warnings
+from datetime import datetime as dt_datetime
+from typing import Any, Callable, cast
+
+try:
+    import pendulum
+except ImportError as e:
+    raise ImportError(
+        "Missing dependency 'pendulum'. Install project dependencies before running tests or using the package. "
+        "Run 'uv sync' or 'pip install -e .[dev]' from the project root."
+    ) from e
+
+from .vocabulary import (
+    DEFAULT_TZ,
+    DEFAULT_EVENT_DURATION_MINUTES,
+    TIMEZONE_ALIASES,
+    RECURRENCE_KEYWORDS,
+    ALL_WEEKDAYS,
+    DURATION_UNITS,
+    PERIOD_UNITS,
+)
+from .result import ParseResult
+from .parsers import (
+    normalize_dutch_time,
+    find_range,
+    has_time,
+    has_date,
+    parse_duration,
+    period_bounds,
+    try_parse_next_weekday,
+    try_parse_prev_weekday,
+    extract_date_part,
+    parse_quarter,
+    parse_week_number,
+    parse_half_year,
+    parse_season,
+    parse_month_expr,
+    parse_weekend,
+    parse_past_period,
+    parse_future_period,
+    parse_year_boundary,
+    parse_holiday,
+    parse_moving_holiday,
+    parse_in_duration,
+    parse_ago,
+    parse_dutch_day_month,
+    parse_ordinal_weekday,
+    parse_compound_day,
+    parse_vague_time,
+)
+from .patterns import (
+    PAST_PERIOD_PATTERN,
+    FUTURE_PERIOD_PATTERN,
+    NEXT_WEEKDAY_PATTERN,
+    PREV_WEEKDAY_PATTERN,
+)
+
+logger = logging.getLogger(__name__)
+
+_WEEKDAY_MAP_NL_EN: dict[str, int] = {
+    # nl
+    "maandag": 0,
+    "dinsdag": 1,
+    "woensdag": 2,
+    "donderdag": 3,
+    "vrijdag": 4,
+    "zaterdag": 5,
+    "zondag": 6,
+    # en
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
+
+# =============================================================================
+# INTERNAL HELPERS
+# =============================================================================
+
+
+def normalize_timezone(tz: str) -> str:
+    """Normalize timezone string, handling common aliases (e.g. 'New York')."""
+    if not tz:
+        return DEFAULT_TZ
+
+    cleaned = tz.strip()
+    lower = cleaned.lower()
+
+    if lower in TIMEZONE_ALIASES:
+        return TIMEZONE_ALIASES[lower]
+
+    return cleaned
+
+
+def _to_naive_datetime(dt: pendulum.DateTime) -> dt_datetime:
+    return dt_datetime(
+        dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, dt.microsecond
+    )
+
+
+def _dateparser_settings(
+    tz: str, base: pendulum.DateTime, prefer_future: bool = True
+) -> dict[str, Any]:
+    return {
+        "RETURN_AS_TIMEZONE_AWARE": True,
+        "TIMEZONE": tz,
+        "TO_TIMEZONE": tz,
+        "RELATIVE_BASE": _to_naive_datetime(base),
+        "PREFER_DATES_FROM": "future" if prefer_future else "current_period",
+        "PREFER_DAY_OF_MONTH": "first",
+        "LANGUAGE_DETECTION_CONFIDENCE_THRESHOLD": 0.2,
+    }
+
+
+def _floor_to_seconds(dt: pendulum.DateTime) -> pendulum.DateTime:
+    return dt.set(microsecond=0)
+
+
+def _is_plain_weekday(text: str) -> bool:
+    t = (text or "").strip().lower()
+    return t in _WEEKDAY_MAP_NL_EN
+
+
+def _weekday_index(text: str) -> int | None:
+    return _WEEKDAY_MAP_NL_EN.get((text or "").strip().lower())
+
+
+def _parse_dt(
+    text: str,
+    tz: str,
+    base: pendulum.DateTime,
+    prefer_future: bool = True,
+) -> pendulum.DateTime | None:
+    logger.debug(
+        f"_parse_dt: text='{text}', base={base.to_datetime_string()}, prefer_future={prefer_future}"
+    )
+
+    # Only use strict next_weekday parser if there is no time component.
+    # If there is time (e.g. "next friday at 3pm"), let dateparser handle the full string.
+    if not has_time(text):
+        next_weekday_result = try_parse_next_weekday(text, base)
+        if next_weekday_result is not None:
+            return _floor_to_seconds(next_weekday_result)
+
+    prev_weekday_result = try_parse_prev_weekday(text, base)
+    if prev_weekday_result is not None:
+        return _floor_to_seconds(prev_weekday_result)
+
+    normalized_text = normalize_dutch_time(text)
+
+    # Clean up 'at' before time digits to help dateparser (e.g. "next friday at 3pm" -> "next friday 3pm")
+    text_for_parser = re.sub(r"\bat\s+(?=\d)", "", normalized_text, flags=re.IGNORECASE)
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Parsing dates involving a day of month without a year specified",
+            category=DeprecationWarning,
+        )
+        dt = dateparser.parse(
+            text_for_parser,
+            settings=_dateparser_settings(tz, base, prefer_future),
+            languages=["nl", "en"],
+        )
+
+    if dt is None:
+        date_part = extract_date_part(text)
+        if date_part != text:
+            logger.debug(f"_parse_dt: trying extracted date part '{date_part}'")
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="Parsing dates involving a day of month without a year specified",
+                    category=DeprecationWarning,
+                )
+                dt = dateparser.parse(
+                    date_part,
+                    settings=_dateparser_settings(tz, base, prefer_future),
+                    languages=["nl", "en"],
+                )
+
+    # Fallback: if dateparser failed completely, try strict weekday parsers again.
+    # This handles cases where 'has_time' was True (so we skipped strict parsing initially),
+    # but dateparser failed to parse the complex string. We at least return the date.
+    if dt is None:
+        next_weekday_result = try_parse_next_weekday(text, base)
+        if next_weekday_result is not None:
+            # If text has time, try to re-parse with explicit date to capture time
+            if has_time(text):
+                m = NEXT_WEEKDAY_PATTERN.search(text)
+                if m:
+                    iso_date = next_weekday_result.to_date_string()
+                    # Replace the relative day with absolute date
+                    new_text = text[: m.start()] + f" {iso_date} " + text[m.end() :]
+                    new_text = " ".join(new_text.split())
+
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore", category=DeprecationWarning)
+                        dt_retry = dateparser.parse(
+                            new_text,
+                            settings=_dateparser_settings(tz, base, prefer_future),
+                            languages=["nl", "en"],
+                        )
+                    if dt_retry:
+                        if dt_retry.tzinfo is None:
+                            result = pendulum.instance(dt_retry, tz=tz)
+                        else:
+                            result = pendulum.instance(dt_retry).in_timezone(tz)
+                        return _floor_to_seconds(result)
+
+            return _floor_to_seconds(next_weekday_result)
+
+        prev_weekday_result = try_parse_prev_weekday(text, base)
+        if prev_weekday_result is not None:
+            if has_time(text):
+                m = PREV_WEEKDAY_PATTERN.search(text)
+                if m:
+                    iso_date = prev_weekday_result.to_date_string()
+                    new_text = text[: m.start()] + f" {iso_date} " + text[m.end() :]
+                    new_text = " ".join(new_text.split())
+
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore", category=DeprecationWarning)
+                        dt_retry = dateparser.parse(
+                            new_text,
+                            settings=_dateparser_settings(tz, base, prefer_future),
+                            languages=["nl", "en"],
+                        )
+                    if dt_retry:
+                        if dt_retry.tzinfo is None:
+                            result = pendulum.instance(dt_retry, tz=tz)
+                        else:
+                            result = pendulum.instance(dt_retry).in_timezone(tz)
+                        return _floor_to_seconds(result)
+
+            return _floor_to_seconds(prev_weekday_result)
+
+    if dt is None:
+        logger.warning(f"_parse_dt: could not parse '{text}'")
+        return None
+
+    if dt.tzinfo is None:
+        result = pendulum.instance(dt, tz=tz)
+    else:
+        result = pendulum.instance(dt).in_timezone(tz)
+
+    return _floor_to_seconds(result)
+
+
+def _normalize_date_only(
+    dt: pendulum.DateTime, original_text: str
+) -> pendulum.DateTime:
+    if has_date(original_text) and not has_time(original_text):
+        return dt.start_of("day").set(microsecond=0)
+    return _floor_to_seconds(dt)
+
+
+def _parse_end_with_start_base(
+    end_text: str,
+    start: pendulum.DateTime,
+    tz: str,
+) -> pendulum.DateTime | None:
+    end_dt = _parse_dt(end_text, tz, base=start, prefer_future=False)
+    if end_dt is None:
+        return None
+
+    if (not has_date(end_text)) and has_time(end_text):
+        end_dt = start.set(
+            hour=end_dt.hour,
+            minute=end_dt.minute,
+            second=end_dt.second,
+            microsecond=0,
+        )
+
+    end_dt = _normalize_date_only(end_dt, end_text)
+    return _floor_to_seconds(end_dt)
+
+
+def _finalize_result(result: ParseResult) -> ParseResult:
+    s = result.start.set(microsecond=0)
+    e = result.end.set(microsecond=0)
+    return ParseResult(
+        start=s,
+        end=e,
+        timezone=result.timezone,
+        assumptions=result.assumptions,
+    )
+
+
+def _weekday_range_this_week(
+    a: str,
+    b: str,
+    *,
+    now: pendulum.DateTime,
+) -> tuple[pendulum.DateTime, pendulum.DateTime] | None:
+    """
+    Handle ranges like 'tussen maandag en woensdag' robustly:
+    - start = weekday within the current week of 'now' (Mon..Sun)
+    - end = weekday within same week as start (>= start), as end-of-day.
+
+    This matches the test expectation for 'tussen maandag en woensdag'.
+    """
+    if not (_is_plain_weekday(a) and _is_plain_weekday(b)):
+        return None
+
+    wa = _weekday_index(a)
+    wb = _weekday_index(b)
+    if wa is None or wb is None:
+        return None
+
+    week_start = now.start_of("week")  # Monday 00:00 in pendulum
+    start = week_start.add(days=wa).start_of("day")
+    end = week_start.add(days=wb).end_of("day")
+
+    # If end would be before start (e.g., "vrijdag tot maandag"),
+    # interpret end as next week's weekday.
+    if end < start:
+        end = end.add(weeks=1)
+
+    return start, end
+
+
+def _parse_relative_quarter(
+    text: str, now: pendulum.DateTime
+) -> tuple[pendulum.DateTime, pendulum.DateTime] | None:
+    """Handle 'vorig kwartaal', 'next quarter' explicitly."""
+
+    # Calculate start of current quarter manually as pendulum start_of("quarter") is not reliable
+    start_month = ((now.month - 1) // 3) * 3 + 1
+    current_q_start = now.replace(
+        month=start_month, day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+
+    # Past
+    match = PAST_PERIOD_PATTERN.search(text)
+    if match:
+        unit_name = match.group("unit").lower()
+        logger.debug(f"_parse_relative_quarter: matched past unit '{unit_name}'")
+        unit = PERIOD_UNITS.get(unit_name)
+        if unit == "quarter":
+            start = current_q_start.subtract(months=3)
+            end = start.add(months=3).subtract(microseconds=1)
+            return start, end
+
+    # Future
+    match = FUTURE_PERIOD_PATTERN.search(text)
+    if match:
+        unit_name = match.group("unit").lower()
+        logger.debug(f"_parse_relative_quarter: matched future unit '{unit_name}'")
+        unit = PERIOD_UNITS.get(unit_name)
+        if unit == "quarter":
+            start = current_q_start.add(months=3)
+            end = start.add(months=3).subtract(microseconds=1)
+            return start, end
+
+    return None
+
+
+# =============================================================================
+# INTERNAL PARSER
+# =============================================================================
+
+
+def _parse_time_range_internal(
+    text: str,
+    tz: str,
+    now: pendulum.DateTime,
+    default_minutes: int = DEFAULT_EVENT_DURATION_MINUTES,
+) -> ParseResult:
+    text = (text or "").strip()
+    if not text:
+        logger.warning("Empty input provided")
+        raise ValueError("Lege invoer.")
+
+    logger.info(f"Parsing: '{text}' (now={now.to_datetime_string()}, tz={tz})")
+
+    normalized_text = normalize_dutch_time(text)
+
+    ParserFunc = Callable[
+        [str, pendulum.DateTime], "tuple[pendulum.DateTime, pendulum.DateTime] | None"
+    ]
+    specialized_parsers: list[tuple[str, ParserFunc]] = [
+        ("quarter", parse_quarter),
+        ("relative_quarter", _parse_relative_quarter),
+        ("year_boundary", parse_year_boundary),
+        ("week_number", parse_week_number),
+        ("half_year", parse_half_year),
+        ("ordinal_weekday", parse_ordinal_weekday),
+        ("compound_day", parse_compound_day),
+        ("season", parse_season),
+        ("moving_holiday", parse_moving_holiday),
+        ("holiday", parse_holiday),
+        ("weekend", parse_weekend),
+        ("past_period", parse_past_period),
+        ("future_period", parse_future_period),
+        ("in_duration", parse_in_duration),
+        ("ago", parse_ago),
+        ("dutch_day_month", parse_dutch_day_month),
+        ("month_expr", parse_month_expr),
+        ("vague_time", parse_vague_time),
+    ]
+
+    for kind, parser in specialized_parsers:
+        parsed = parser(text, now)
+        if parsed:
+            s, e = parsed
+            result = ParseResult(
+                start=s,
+                end=e,
+                timezone=tz,
+                assumptions={"kind": kind, "base_now": now.to_iso8601_string()},
+            )
+            return _finalize_result(result)
+
+    # 1) Explicit range
+    rng = find_range(normalized_text)
+    if rng:
+        a, b = rng
+        logger.debug(f"Found explicit range: '{a}' to '{b}'")
+
+        # ✅ Special case: weekday-to-weekday ranges (e.g., maandag..woensdag)
+        weekday_range = _weekday_range_this_week(a, b, now=now)
+        if weekday_range is not None:
+            start, end = weekday_range
+            result = ParseResult(
+                start=start,
+                end=end,
+                timezone=tz,
+                assumptions={
+                    "kind": "explicit_range",
+                    "range_split": [a, b],
+                    "base_now": now.to_iso8601_string(),
+                    "weekday_range_mode": "this_week",
+                },
+            )
+            return _finalize_result(result)
+
+        start_parsed = _parse_dt(a, tz, base=now, prefer_future=False)
+        if start_parsed is None:
+            raise ValueError(f"Kon start niet parsen: {a!r}")
+        start = _normalize_date_only(start_parsed, a)
+
+        end_parsed = _parse_end_with_start_base(b, start, tz)
+        if end_parsed is None:
+            raise ValueError(f"Kon eind niet parsen: {b!r}")
+        end = end_parsed
+
+        inferred_next_day = False
+        if end < start and (not has_date(b)) and has_time(b):
+            end = end.add(days=1)
+            inferred_next_day = True
+            logger.debug("Inferred next day for end time (midnight crossing)")
+
+        if has_date(b) and not has_time(b):
+            end = end.end_of("day")
+
+        result = ParseResult(
+            start=start,
+            end=end,
+            timezone=tz,
+            assumptions={
+                "kind": "explicit_range",
+                "range_split": [a, b],
+                "base_now": now.to_iso8601_string(),
+                "end_time_only": (not has_date(b)) and has_time(b),
+                "inferred_next_day": inferred_next_day,
+            },
+        )
+        return _finalize_result(result)
+
+    # 2) Single moment/period
+    start_parsed = _parse_dt(normalized_text, tz, base=now, prefer_future=True)
+    if start_parsed is None:
+        raise ValueError(f"Kon tekst niet parsen: {text!r}")
+    start = start_parsed
+
+    dur = parse_duration(text)
+    if dur is not None:
+        end = start + dur
+        result = ParseResult(
+            start=start,
+            end=end,
+            timezone=tz,
+            assumptions={
+                "kind": "duration",
+                "duration": str(dur),
+                "base_now": now.to_iso8601_string(),
+            },
+        )
+        return _finalize_result(result)
+
+    bounds = period_bounds(text, start)
+    if bounds:
+        s, e = bounds
+        result = ParseResult(
+            start=s,
+            end=e,
+            timezone=tz,
+            assumptions={"kind": "period_bounds", "base_now": now.to_iso8601_string()},
+        )
+        return _finalize_result(result)
+
+    if has_time(text):
+        end = start.add(minutes=default_minutes)
+        result = ParseResult(
+            start=start,
+            end=end,
+            timezone=tz,
+            assumptions={
+                "kind": "time_with_default_duration",
+                "default_minutes": default_minutes,
+                "base_now": now.to_iso8601_string(),
+            },
+        )
+        return _finalize_result(result)
+
+    start = start.start_of("day")
+    end = start.end_of("day")
+    result = ParseResult(
+        start=start,
+        end=end,
+        timezone=tz,
+        assumptions={"kind": "date_whole_day", "base_now": now.to_iso8601_string()},
+    )
+    return _finalize_result(result)
+
+
+# =============================================================================
+# PUBLIC API
+# =============================================================================
+
+
+def parse_time_range(
+    text: str,
+    *,
+    now: dt_datetime,
+    default_minutes: int = DEFAULT_EVENT_DURATION_MINUTES,
+    tz: str = DEFAULT_TZ,
+) -> tuple[dt_datetime, dt_datetime]:
+    tz = normalize_timezone(tz)
+    now_pendulum = pendulum.datetime(
+        now.year,
+        now.month,
+        now.day,
+        now.hour,
+        now.minute,
+        now.second,
+        now.microsecond,
+        tz=tz,
+    )
+
+    result = _parse_time_range_internal(text, tz, now_pendulum, default_minutes)
+
+    return (
+        dt_datetime(
+            result.start.year,
+            result.start.month,
+            result.start.day,
+            result.start.hour,
+            result.start.minute,
+            result.start.second,
+            0,
+        ),
+        dt_datetime(
+            result.end.year,
+            result.end.month,
+            result.end.day,
+            result.end.hour,
+            result.end.minute,
+            result.end.second,
+            0,
+        ),
+    )
+
+
+def parse_time_range_tz(
+    text: str,
+    *,
+    now: dt_datetime,
+    default_minutes: int = DEFAULT_EVENT_DURATION_MINUTES,
+    tz: str = DEFAULT_TZ,
+) -> tuple[pendulum.DateTime, pendulum.DateTime]:
+    tz = normalize_timezone(tz)
+    now_pendulum = pendulum.datetime(
+        now.year,
+        now.month,
+        now.day,
+        now.hour,
+        now.minute,
+        now.second,
+        now.microsecond,
+        tz=tz,
+    )
+    result = _parse_time_range_internal(text, tz, now_pendulum, default_minutes)
+    return result.start, result.end
+
+
+def parse_time_range_full(
+    text: str,
+    tz: str = DEFAULT_TZ,
+    now_iso: str | None = None,
+    default_minutes: int = DEFAULT_EVENT_DURATION_MINUTES,
+) -> ParseResult:
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("Lege invoer.")
+
+    tz = normalize_timezone(tz)
+    if now_iso:
+        now = cast(pendulum.DateTime, pendulum.parse(now_iso)).in_timezone(tz)
+    else:
+        now = pendulum.now(tz)
+    return _parse_time_range_internal(text, tz, now, default_minutes=default_minutes)
+
+
+def convert_to_timezone(
+    text: str,
+    target_tz: str,
+    source_tz: str = DEFAULT_TZ,
+    now_iso: str | None = None,
+) -> dict[str, Any]:
+    """
+    Parse text in source_tz and convert the result to target_tz.
+    """
+    source_tz = normalize_timezone(source_tz)
+    target_tz = normalize_timezone(target_tz)
+
+    # Parse in source timezone
+    result = parse_time_range_full(text, tz=source_tz, now_iso=now_iso)
+
+    s_target = result.start.in_timezone(target_tz)
+    e_target = result.end.in_timezone(target_tz)
+
+    return {
+        "input": text,
+        "source_timezone": source_tz,
+        "target_timezone": target_tz,
+        "source_start": result.start.to_iso8601_string(),
+        "target_start": s_target.to_iso8601_string(),
+        "source_end": result.end.to_iso8601_string(),
+        "target_end": e_target.to_iso8601_string(),
+        "utc_offset_diff_hours": (
+            (s_target.offset - result.start.offset) / 3600.0
+            if s_target.offset is not None and result.start.offset is not None
+            else 0.0
+        ),
+    }
+
+
+def expand_recurrence(
+    text: str,
+    tz: str = DEFAULT_TZ,
+    now_iso: str | None = None,
+    count: int = 10,
+) -> dict[str, Any]:
+    """
+    Generate a list of dates based on a recurrence rule (e.g. 'every friday').
+    """
+    tz = normalize_timezone(tz)
+    if now_iso:
+        now = cast(pendulum.DateTime, pendulum.parse(now_iso)).in_timezone(tz)
+    else:
+        now = pendulum.now(tz)
+    normalized = text.lower()
+
+    interval_val = 1
+    unit = None
+    weekday_idx = None
+
+    # 1. Check for explicit number (e.g. "every 2 weeks")
+    number_match = re.search(r"(\d+)", normalized)
+    if number_match:
+        interval_val = int(number_match.group(1))
+
+    # 2. Check for specific weekday (e.g. "every Friday")
+    for wd_name, wd_idx in ALL_WEEKDAYS.items():
+        if wd_name in normalized:
+            weekday_idx = wd_idx
+            unit = "weeks"  # Implies weekly recurrence
+            break
+
+    # 3. Check for units if no weekday found
+    if not unit:
+        for u_name, u_std in DURATION_UNITS.items():
+            if re.search(r"\b" + re.escape(u_name) + r"\b", normalized):
+                unit = u_std
+                break
+
+    # 4. Handle keywords like "daily", "monthly"
+    if "dagelijks" in normalized or "daily" in normalized:
+        unit = "days"
+        interval_val = 1
+    elif "wekelijks" in normalized or "weekly" in normalized:
+        unit = "weeks"
+        interval_val = 1
+    elif "maandelijks" in normalized or "monthly" in normalized:
+        unit = "months"
+        interval_val = 1
+    elif "jaarlijks" in normalized or "yearly" in normalized:
+        unit = "years"
+        interval_val = 1
+
+    if not unit:
+        # Fallback: if "elke" is present but no unit, assume days?
+        # For now, if we can't determine unit, we can't generate.
+        if any(k in normalized for k in RECURRENCE_KEYWORDS):
+            # Default to days if ambiguous but clearly a recurrence request
+            unit = "days"
+        else:
+            raise ValueError(f"Kon geen herhalingspatroon herkennen in: '{text}'")
+
+    # Determine start date
+    current = now
+
+    # If weekday specified, advance to next occurrence
+    if weekday_idx is not None:
+        if current.day_of_week != weekday_idx:
+            current = current.next(cast(Any, weekday_idx))
+        # If today IS the day, we include it (or should we skip? Let's include)
+
+    dates = []
+    for _ in range(count):
+        dates.append(current.to_iso8601_string())
+        current = current.add(**{unit: interval_val})
+
+    return {
+        "input": text,
+        "timezone": tz,
+        "rule": {"interval": interval_val, "unit": unit, "weekday": weekday_idx},
+        "dates": dates,
+    }
+
+
+def calculate_duration(
+    start_text: str,
+    end_text: str,
+    tz: str = DEFAULT_TZ,
+    now_iso: str | None = None,
+) -> dict[str, Any]:
+    """
+    Calculate the difference between two dates/times.
+    """
+    tz = normalize_timezone(tz)
+
+    # Parse both inputs independently relative to 'now'
+    res_a = parse_time_range_full(start_text, tz=tz, now_iso=now_iso)
+    res_b = parse_time_range_full(end_text, tz=tz, now_iso=now_iso)
+
+    dt_a = res_a.start
+    dt_b = res_b.start
+
+    diff = dt_b - dt_a
+
+    # Business days calculation (simple Mon-Fri)
+    if dt_b < dt_a:
+        start_iter, end_iter = dt_b, dt_a
+        sign = -1
+    else:
+        start_iter, end_iter = dt_a, dt_b
+        sign = 1
+
+    business_days = 0
+    curr = start_iter
+    # Iterate by day to count weekdays
+    while curr.date() < end_iter.date():
+        if curr.day_of_week not in (pendulum.SATURDAY, pendulum.SUNDAY):
+            business_days += 1
+        curr = curr.add(days=1)
+
+    business_days *= sign
+
+    return {
+        "input_start": start_text,
+        "input_end": end_text,
+        "timezone": tz,
+        "start_iso": dt_a.to_iso8601_string(),
+        "end_iso": dt_b.to_iso8601_string(),
+        "duration": {
+            "total_days": diff.total_days(),
+            "total_seconds": diff.total_seconds(),
+            "business_days": business_days,
+            "human_readable": diff.in_words(locale="en"),
+        },
+    }

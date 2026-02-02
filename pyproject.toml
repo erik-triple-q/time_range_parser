@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "time-range-parser"
+version = "0.1.0"
+description = "Natural language date/time range parser for Dutch and English. Designed as a **Model Context Protocol (MCP) server** to provide date/time parsing capabilities to language models."
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "dateparser>=1.2.2",
+    "httpx>=0.28.1",
+    "mcp>=1.26.0",
+    "pendulum>=3.1.0",
+    "requests>=2.32.5",
+    "uvicorn>=0.30.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.14",
+    "mypy>=1.14.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/date_textparser"]
+
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning:dateparser.*",
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "dateparser.*",
+    "pendulum.*",
+    "mcp.*",
+]
+ignore_missing_imports = true

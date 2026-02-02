@@ -1,0 +1,12 @@
+services:
+  date-textparser-mcp:
+    build: .
+    container_name: date-textparser-mcp
+    ports:
+      - "9000:9000"
+    command: python server_main.py --sse
+    environment:
+      TZ: Europe/Amsterdam
+      HOST: 0.0.0.0
+      PORT: "9000"
+    restart: unless-stopped

@@ -1,0 +1,586 @@
+"""
+Central vocabulary definitions for Dutch and English temporal expressions.
+
+This module contains all mappings, constants, and lookup tables used
+for parsing natural language date/time expressions.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+# =============================================================================
+# DEFAULTS
+# =============================================================================
+
+DEFAULT_TZ = "Europe/Amsterdam"
+DEFAULT_EVENT_DURATION_MINUTES = 60
+
+# =============================================================================
+# WEEKDAYS
+# =============================================================================
+
+DUTCH_WEEKDAYS: dict[str, int] = {
+    "maandag": 0,
+    "dinsdag": 1,
+    "woensdag": 2,
+    "donderdag": 3,
+    "vrijdag": 4,
+    "zaterdag": 5,
+    "zondag": 6,
+}
+
+ENGLISH_WEEKDAYS: dict[str, int] = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
+ALL_WEEKDAYS: dict[str, int] = {**DUTCH_WEEKDAYS, **ENGLISH_WEEKDAYS}
+
+# =============================================================================
+# PERIOD UNITS
+# =============================================================================
+
+PERIOD_UNITS: dict[str, str] = {
+    "week": "week",
+    "weken": "week",
+    "maand": "month",
+    "maanden": "month",
+    "month": "month",
+    "months": "month",
+    "jaar": "year",
+    "jaren": "year",
+    "year": "year",
+    "years": "year",
+    "kwartaal": "quarter",
+    "kwartalen": "quarter",
+    "quarter": "quarter",
+    "quarters": "quarter",
+}
+
+# =============================================================================
+# DURATION UNITS
+# =============================================================================
+
+DURATION_UNITS: dict[str, str] = {
+    "min": "minutes",
+    "minuut": "minutes",
+    "minuten": "minutes",
+    "mins": "minutes",
+    "uur": "hours",
+    "uren": "hours",
+    "hour": "hours",
+    "hours": "hours",
+    "h": "hours",
+    "dag": "days",
+    "dagen": "days",
+    "day": "days",
+    "days": "days",
+    "d": "days",
+    "week": "weeks",
+    "weken": "weeks",
+    "weeks": "weeks",
+    "w": "weeks",
+    "maand": "months",
+    "maanden": "months",
+    "month": "months",
+    "months": "months",
+    "jaar": "years",
+    "jaren": "years",
+    "year": "years",
+    "years": "years",
+}
+
+# =============================================================================
+# SEASONS
+# =============================================================================
+
+SEASONS: dict[str, tuple[int, int]] = {
+    # Dutch
+    "lente": (3, 5),
+    "voorjaar": (3, 5),
+    "zomer": (6, 8),
+    "herfst": (9, 11),
+    "najaar": (9, 11),
+    "winter": (12, 2),
+    # English
+    "spring": (3, 5),
+    "summer": (6, 8),
+    "autumn": (9, 11),
+    "fall": (9, 11),
+}
+
+# =============================================================================
+# HOLIDAYS
+# =============================================================================
+
+FIXED_HOLIDAYS: dict[str, tuple[int, int]] = {
+    # Dutch
+    "nieuwjaar": (1, 1),
+    "nieuwjaarsdag": (1, 1),
+    "koningsdag": (4, 27),
+    "bevrijdingsdag": (5, 5),
+    "kerst": (12, 25),
+    "kerstmis": (12, 25),
+    "eerste kerstdag": (12, 25),
+    "tweede kerstdag": (12, 26),
+    "oudjaar": (12, 31),
+    "oudjaarsdag": (12, 31),
+    "oud en nieuw": (12, 31),
+    "sinterklaas": (12, 5),
+    "valentijnsdag": (2, 14),
+    # English
+    "new year": (1, 1),
+    "new years day": (1, 1),
+    "christmas": (12, 25),
+    "christmas day": (12, 25),
+    "boxing day": (12, 26),
+    "new years eve": (12, 31),
+    "valentines day": (2, 14),
+}
+
+# Moving holidays: offset from Easter Sunday
+MOVING_HOLIDAYS: dict[str, int] = {
+    # Dutch
+    "pasen": 0,
+    "eerste paasdag": 0,
+    "paaszondag": 0,
+    "tweede paasdag": 1,
+    "paasmaandag": 1,
+    "goede vrijdag": -2,
+    "hemelvaart": 39,
+    "hemelvaartsdag": 39,
+    "pinksteren": 49,
+    "eerste pinksterdag": 49,
+    "pinksterzondag": 49,
+    "tweede pinksterdag": 50,
+    "pinkstermaandag": 50,
+    "carnaval": -49,
+    "carnavalszondag": -49,
+    "aswoensdag": -46,
+    "palmzondag": -7,
+    "palmpasen": -7,
+    # English
+    "easter": 0,
+    "easter sunday": 0,
+    "easter monday": 1,
+    "good friday": -2,
+    "ascension": 39,
+    "ascension day": 39,
+    "pentecost": 49,
+    "whit sunday": 49,
+    "whit monday": 50,
+    "carnival": -49,
+    "ash wednesday": -46,
+    "palm sunday": -7,
+}
+
+MOVING_HOLIDAY_NAMES: list[str] = [
+    # Dutch (longer first for regex matching)
+    "tweede pinksterdag",
+    "eerste pinksterdag",
+    "pinkstermaandag",
+    "pinksterzondag",
+    "tweede paasdag",
+    "eerste paasdag",
+    "paasmaandag",
+    "paaszondag",
+    "carnavalszondag",
+    "hemelvaartsdag",
+    "goede vrijdag",
+    "aswoensdag",
+    "palmzondag",
+    "palmpasen",
+    "pinksteren",
+    "hemelvaart",
+    "carnaval",
+    "pasen",
+    # English
+    "easter monday",
+    "easter sunday",
+    "good friday",
+    "ascension day",
+    "whit sunday",
+    "whit monday",
+    "ash wednesday",
+    "palm sunday",
+    "pentecost",
+    "ascension",
+    "carnival",
+    "easter",
+]
+
+# =============================================================================
+# ORDINALS
+# =============================================================================
+
+ORDINALS: dict[str, int] = {
+    # Dutch
+    "eerste": 1,
+    "1e": 1,
+    "1ste": 1,
+    "tweede": 2,
+    "2e": 2,
+    "2de": 2,
+    "derde": 3,
+    "3e": 3,
+    "3de": 3,
+    "vierde": 4,
+    "4e": 4,
+    "4de": 4,
+    "vijfde": 5,
+    "5e": 5,
+    "5de": 5,
+    "zesde": 6,
+    "6e": 6,
+    "6de": 6,
+    "zevende": 7,
+    "7e": 7,
+    "7de": 7,
+    "achtste": 8,
+    "8e": 8,
+    "8ste": 8,
+    "negende": 9,
+    "9e": 9,
+    "9de": 9,
+    "tiende": 10,
+    "10e": 10,
+    "10de": 10,
+    "laatste": -1,
+    # English
+    "first": 1,
+    "1st": 1,
+    "second": 2,
+    "2nd": 2,
+    "third": 3,
+    "3rd": 3,
+    "fourth": 4,
+    "4th": 4,
+    "fifth": 5,
+    "5th": 5,
+    "sixth": 6,
+    "6th": 6,
+    "seventh": 7,
+    "7th": 7,
+    "eighth": 8,
+    "8th": 8,
+    "ninth": 9,
+    "9th": 9,
+    "tenth": 10,
+    "10th": 10,
+    "last": -1,
+}
+
+# =============================================================================
+# HALF YEARS / SEMESTERS
+# =============================================================================
+
+HALF_YEARS: dict[str, int] = {
+    "h1": 1,
+    "h2": 2,
+    "eerste helft": 1,
+    "tweede helft": 2,
+    "1e helft": 1,
+    "2e helft": 2,
+    "eerste semester": 1,
+    "tweede semester": 2,
+    "1e semester": 1,
+    "2e semester": 2,
+    "first half": 1,
+    "second half": 2,
+    "1st half": 1,
+    "2nd half": 2,
+    "first semester": 1,
+    "second semester": 2,
+}
+
+# =============================================================================
+# DAY PARTS
+# =============================================================================
+
+DAY_PARTS: dict[str, tuple[int, int]] = {
+    # Dutch
+    "ochtend": (6, 12),
+    "morgen": (6, 12),  # Note: context-dependent, can also mean "tomorrow"
+    "middag": (12, 18),
+    "avond": (18, 23),
+    "nacht": (23, 6),
+    # English
+    "morning": (6, 12),
+    "afternoon": (12, 18),
+    "evening": (18, 23),
+    "night": (23, 6),
+}
+
+# =============================================================================
+# MONTH NAMES
+# =============================================================================
+
+MONTH_NAMES: dict[str, int] = {
+    # Dutch full
+    "januari": 1,
+    "februari": 2,
+    "maart": 3,
+    "april": 4,
+    "mei": 5,
+    "juni": 6,
+    "juli": 7,
+    "augustus": 8,
+    "september": 9,
+    "oktober": 10,
+    "november": 11,
+    "december": 12,
+    # Dutch abbreviated
+    "jan": 1,
+    "feb": 2,
+    "mrt": 3,
+    "apr": 4,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "okt": 10,
+    "nov": 11,
+    "dec": 12,
+    # English full
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "october": 10,
+    # English abbreviated
+    "sept": 9,
+    "oct": 10,
+}
+
+# =============================================================================
+# DUTCH NUMBER WORDS
+# =============================================================================
+
+DUTCH_NUMBER_WORDS: dict[str, int] = {
+    "een": 1,
+    "één": 1,
+    "twee": 2,
+    "drie": 3,
+    "vier": 4,
+    "vijf": 5,
+    "zes": 6,
+    "zeven": 7,
+    "acht": 8,
+    "negen": 9,
+    "tien": 10,
+    "elf": 11,
+    "twaalf": 12,
+    "dertien": 13,
+    "veertien": 14,
+    "vijftien": 15,
+    "zestien": 16,
+    "zeventien": 17,
+    "achttien": 18,
+    "negentien": 19,
+    "twintig": 20,
+    "eenentwintig": 21,
+    "tweeentwintig": 22,
+    "drieentwintig": 23,
+    "vierentwintig": 24,
+    "vijfentwintig": 25,
+    "zesentwintig": 26,
+    "zevenentwintig": 27,
+    "achtentwintig": 28,
+    "negenentwintig": 29,
+    "dertig": 30,
+    "eenendertig": 31,
+}
+
+ENGLISH_NUMBER_WORDS: dict[str, int] = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "twenty-one": 21,
+    "twenty-two": 22,
+    "twenty-three": 23,
+    "twenty-four": 24,
+    "twenty-five": 25,
+    "twenty-six": 26,
+    "twenty-seven": 27,
+    "twenty-eight": 28,
+    "twenty-nine": 29,
+    "thirty": 30,
+    "thirty-one": 31,
+    # Ordinals (needed for "fifth of january")
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
+    "eleventh": 11,
+    "twelfth": 12,
+    "thirteenth": 13,
+    "fourteenth": 14,
+    "fifteenth": 15,
+    "sixteenth": 16,
+    "seventeenth": 17,
+    "eighteenth": 18,
+    "nineteenth": 19,
+    "twentieth": 20,
+    "twenty-first": 21,
+    "twenty-second": 22,
+    "twenty-third": 23,
+    "twenty-fourth": 24,
+    "twenty-fifth": 25,
+    "twenty-sixth": 26,
+    "twenty-seventh": 27,
+    "twenty-eighth": 28,
+    "twenty-nineth": 29,
+    "thirtieth": 30,
+    "thirty-first": 31,
+}
+
+# =============================================================================
+# VAGUE TIME EXPRESSIONS
+# =============================================================================
+
+VAGUE_TIME_EXPRESSIONS: dict[str, dict[str, Any]] = {
+    # Dutch - relative to now
+    "straks": {"hours": 2, "type": "future"},
+    "zo": {"hours": 1, "type": "future"},
+    "zo meteen": {"minutes": 30, "type": "future"},
+    "dadelijk": {"minutes": 15, "type": "future"},
+    "binnenkort": {"days": 7, "type": "future_range"},
+    "later": {"hours": 3, "type": "future"},
+    "vanavond": {"hour": 20, "type": "fixed_today"},
+    "vanmiddag": {"hour": 14, "type": "fixed_today"},
+    "vanochtend": {"hour": 9, "type": "fixed_today"},
+    "vannacht": {"hour": 23, "type": "fixed_today"},
+    "vroeg": {"hour": 7, "type": "time_of_day"},
+    "laat": {"hour": 22, "type": "time_of_day"},
+    "rond lunchtijd": {"hour": 12, "minute": 30, "type": "fixed_today"},
+    "lunchtijd": {"hour": 12, "minute": 30, "type": "fixed_today"},
+    "lunch": {"hour": 12, "minute": 30, "type": "fixed_today"},
+    "etenstijd": {"hour": 18, "type": "fixed_today"},
+    "rond etenstijd": {"hour": 18, "type": "fixed_today"},
+    "avondeten": {"hour": 18, "type": "fixed_today"},
+    "ontbijt": {"hour": 8, "type": "fixed_today"},
+    "eind van de dag": {"hour": 17, "type": "fixed_today"},
+    "begin van de dag": {"hour": 9, "type": "fixed_today"},
+    "net": {"minutes": -15, "type": "past"},
+    "zojuist": {"minutes": -10, "type": "past"},
+    "daarnet": {"minutes": -20, "type": "past"},
+    "eerder": {"hours": -2, "type": "past"},
+    "onlangs": {"days": -3, "type": "past_range"},
+    "laatst": {"days": -5, "type": "past_range"},
+    "dezer dagen": {"days": 3, "type": "future_range"},
+    "een dezer dagen": {"days": 5, "type": "future_range"},
+    "komende dagen": {"days": 3, "type": "future_range"},
+    "de komende dagen": {"days": 5, "type": "future_range"},
+    "de komende tijd": {"days": 14, "type": "future_range"},
+    "deze dagen": {"days": 3, "type": "current_range"},
+    "rond deze tijd": {"hours": 1, "type": "around_now"},
+    "over een uurtje": {"hours": 1, "type": "future"},
+    "over een halfuurtje": {"minutes": 30, "type": "future"},
+    "over een kwartiertje": {"minutes": 15, "type": "future"},
+    # English equivalents
+    "soon": {"hours": 2, "type": "future"},
+    "shortly": {"minutes": 30, "type": "future"},
+    "in a bit": {"minutes": 30, "type": "future"},
+    "in a while": {"hours": 1, "type": "future"},
+    "tonight": {"hour": 20, "type": "fixed_today"},
+    "this afternoon": {"hour": 14, "type": "fixed_today"},
+    "this morning": {"hour": 9, "type": "fixed_today"},
+    "this evening": {"hour": 19, "type": "fixed_today"},
+    "early": {"hour": 7, "type": "time_of_day"},
+    "late": {"hour": 22, "type": "time_of_day"},
+    "around lunchtime": {"hour": 12, "minute": 30, "type": "fixed_today"},
+    "lunchtime": {"hour": 12, "minute": 30, "type": "fixed_today"},
+    "dinnertime": {"hour": 18, "type": "fixed_today"},
+    "around dinnertime": {"hour": 18, "type": "fixed_today"},
+    "end of day": {"hour": 17, "type": "fixed_today"},
+    "end of the day": {"hour": 17, "type": "fixed_today"},
+    "start of day": {"hour": 9, "type": "fixed_today"},
+    "just now": {"minutes": -10, "type": "past"},
+    "recently": {"days": -3, "type": "past_range"},
+    "lately": {"days": -7, "type": "past_range"},
+    "the other day": {"days": -3, "type": "past"},
+    "coming days": {"days": 5, "type": "future_range"},
+    "the coming days": {"days": 5, "type": "future_range"},
+    "in the coming days": {"days": 5, "type": "future_range"},
+    "these days": {"days": 3, "type": "current_range"},
+    "around now": {"hours": 1, "type": "around_now"},
+    "in about an hour": {"hours": 1, "type": "future"},
+    "in half an hour": {"minutes": 30, "type": "future"},
+    "in a quarter": {"minutes": 15, "type": "future"},
+}
+
+# =============================================================================
+# TIMEZONE ALIASES
+# =============================================================================
+
+TIMEZONE_ALIASES: dict[str, str] = {
+    "new york": "America/New_York",
+    "nyc": "America/New_York",
+    "ny": "America/New_York",
+    "amsterdam": "Europe/Amsterdam",
+    "london": "Europe/London",
+    "uk": "Europe/London",
+    "paris": "Europe/Paris",
+    "berlin": "Europe/Berlin",
+    "tokyo": "Asia/Tokyo",
+    "sydney": "Australia/Sydney",
+    "utc": "UTC",
+    "gmt": "UTC",
+    "cet": "Europe/Paris",
+    "cest": "Europe/Paris",
+    "pst": "America/Los_Angeles",
+    "pdt": "America/Los_Angeles",
+    "est": "America/New_York",
+    "edt": "America/New_York",
+}
+
+# =============================================================================
+# RECURRENCE
+# =============================================================================
+
+RECURRENCE_KEYWORDS: dict[str, str] = {
+    "elke": "every",
+    "iedere": "every",
+    "every": "every",
+    "each": "every",
+    "dagelijks": "daily",
+    "daily": "daily",
+    "wekelijks": "weekly",
+    "weekly": "weekly",
+    "maandelijks": "monthly",
+    "monthly": "monthly",
+    "jaarlijks": "yearly",
+    "yearly": "yearly",
+}
