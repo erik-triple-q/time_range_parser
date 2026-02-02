@@ -14,9 +14,20 @@ from date_textparser import (
     calculate_duration,
     DEFAULT_TZ,
 )
+from date_textparser.core import normalize_timezone
+
+# Ensure src is in path to import lib.external_time
+src_path = os.path.join(os.path.dirname(__file__), "src")
+if src_path not in sys.path:
+    sys.path.append(src_path)
+from lib.external_time import get_current_time_from_api
 
 # Configure logging to stderr (important for MCP stdio)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', stream=sys.stderr)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stderr,
+)
 logger = logging.getLogger("time-range-parser")
 
 mcp = FastMCP("time-range-parser")
@@ -31,6 +42,7 @@ CUSTOM_EVENTS = {
     "cyber monday 2025": "2025-12-01",
     "boekjaar start": "2026-04-01",
 }
+
 
 def check_custom_events(text: str) -> dict[str, Any] | None:
     """Check if text matches a known custom event."""
@@ -48,6 +60,7 @@ def check_custom_events(text: str) -> dict[str, Any] | None:
         }
     return None
 
+
 def analyze_error_hint(text: str) -> str | None:
     """Analyze input to provide smart error hints (Point C)."""
     # Check for invalid quarters (Q5-Q9)
@@ -57,6 +70,7 @@ def analyze_error_hint(text: str) -> str | None:
     if re.search(r"week\s*([6-9]\d|[1-9]\d{2,})", text, re.IGNORECASE):
         return "Invalid week number. Weeks must be between 1 and 53."
     return None
+
 
 @mcp.tool(name="resolve_time_range")
 def resolve_time_range(
@@ -80,17 +94,21 @@ def resolve_time_range(
     Returns:
         Dictionary with input, timezone, start, end (ISO-8601), and kind
     """
-    logger.info(f"Tool 'resolve_time_range' called: text='{text}', timezone='{timezone}', fiscal_start={fiscal_start_month}")
-    
+    logger.info(
+        f"Tool 'resolve_time_range' called: text='{text}', timezone='{timezone}', fiscal_start={fiscal_start_month}"
+    )
+
     # 1. Check Custom Events (Point B)
     custom_result = check_custom_events(text)
     if custom_result:
-        custom_result["timezone"] = timezone # Override default if needed
+        custom_result["timezone"] = timezone  # Override default if needed
         return custom_result
 
     try:
         # Note: parse_time_range_full needs to be updated to accept fiscal_start_month
-        result = parse_time_range_full(text=text, tz=timezone, now_iso=now_iso) # TODO: Pass fiscal_start_month
+        result = parse_time_range_full(
+            text=text, tz=timezone, now_iso=now_iso
+        )  # TODO: Pass fiscal_start_month
         return {
             "input": text,
             "timezone": result.timezone,
@@ -102,7 +120,7 @@ def resolve_time_range(
         # 2. Smart Error Responses (Point C)
         hint = analyze_error_hint(text)
         error_msg = f"{str(e)} - Hint: {hint}" if hint else str(e)
-        
+
         logger.error(f"Error parsing '{text}': {error_msg}")
         return {"error": error_msg, "input": text}
 
@@ -166,10 +184,15 @@ def convert_timezone(
     Convert a date/time expression from one timezone to another.
     Example: text="15:00", source="Amsterdam", target="New York"
     """
-    logger.info(f"Tool 'convert_timezone' called: text='{text}', from='{source_timezone}' to='{target_timezone}'")
+    logger.info(
+        f"Tool 'convert_timezone' called: text='{text}', from='{source_timezone}' to='{target_timezone}'"
+    )
     try:
         return convert_to_timezone(
-            text=text, target_tz=target_timezone, source_tz=source_timezone, now_iso=now_iso
+            text=text,
+            target_tz=target_timezone,
+            source_tz=source_timezone,
+            now_iso=now_iso,
         )
     except Exception as e:
         logger.error(f"Error converting timezone: {e}")
@@ -189,9 +212,7 @@ def expand_recurrence_tool(
     """
     logger.info(f"Tool 'expand_recurrence' called: text='{text}', count={count}")
     try:
-        return expand_recurrence(
-            text=text, tz=timezone, now_iso=now_iso, count=count
-        )
+        return expand_recurrence(text=text, tz=timezone, now_iso=now_iso, count=count)
     except Exception as e:
         logger.error(f"Error expanding recurrence: {e}")
         return {"error": str(e)}
@@ -218,6 +239,36 @@ def calculate_duration_tool(
         return {"error": str(e)}
 
 
+@mcp.tool(name="get_world_time")
+def get_world_time(city: str) -> dict[str, Any]:
+    """
+    Get the current time for a specific city or timezone via WorldTimeAPI.
+    Example: city="New York" -> returns current time in America/New_York.
+    """
+    logger.info(f"Tool 'get_world_time' called: city='{city}'")
+    try:
+        # 1. Normalize to IANA timezone (e.g. "London" -> "Europe/London")
+        timezone = normalize_timezone(city)
+
+        # 2. Fetch from API
+        time_iso = get_current_time_from_api(timezone)
+
+        if time_iso:
+            return {
+                "city": city,
+                "timezone": timezone,
+                "current_time": time_iso,
+                "source": "WorldTimeAPI",
+            }
+        else:
+            return {
+                "error": f"Could not fetch time for '{city}' (timezone: '{timezone}'). API might be down or timezone invalid."
+            }
+    except Exception as e:
+        logger.error(f"Error in get_world_time: {e}")
+        return {"error": str(e)}
+
+
 @mcp.tool(name="server_info")
 def server_info() -> dict[str, Any]:
     """Basic server info for clients."""
@@ -232,6 +283,7 @@ def server_info() -> dict[str, Any]:
             "convert_timezone",
             "expand_recurrence",
             "calculate_duration",
+            "get_world_time",
             "server_info",
         ],
     }
@@ -246,7 +298,9 @@ if __name__ == "__main__":
 
         parser = argparse.ArgumentParser()
         parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
-        parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "9000")))
+        parser.add_argument(
+            "--port", type=int, default=int(os.environ.get("PORT", "9000"))
+        )
         parser.add_argument("--sse", action="store_true")
         args, _ = parser.parse_known_args()
 

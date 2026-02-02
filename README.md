@@ -40,6 +40,7 @@ For detailed API documentation, testing, and development guides, see [TECHNICAL.
 
 - **Conversion**: Convert times between zones (e.g., Amsterdam to New York).
 - **Aliases**: Supports city names (`New York`, `London`) and abbreviations (`EST`, `CET`).
+- **External Sync**: Optional integration with WorldTimeAPI for IP-based timezone detection and world time lookup.
 
 ### Holidays
 
@@ -105,7 +106,7 @@ uv sync
 ### Start (Standalone)
 
 ```bash
-uv run python server_main.py
+uv run python server_main.py --sse
 ```
 
 ### Available Tools
@@ -118,6 +119,7 @@ See TECHNICAL.md for the full API reference.
 - `convert_timezone`
 - `expand_recurrence`
 - `calculate_duration`
+- `get_world_time`
 - `server_info`
 
 ---

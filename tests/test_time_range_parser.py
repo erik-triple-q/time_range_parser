@@ -174,6 +174,18 @@ class TestRelativeDaysWithTime:
         assert start == expected_start
         assert end == expected_start + timedelta(minutes=60)
 
+    def test_morgen_om_15_00(self, now: datetime):
+        """'morgen om 15:00' -> met voorzetsel 'om'."""
+        start, end = parse_time_range("morgen om 15:00", now=now, default_minutes=60)
+
+        tomorrow = (now + timedelta(days=1)).date()
+        expected_start = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 15, 0, 0)
+
+        print_result("morgen om 15:00", now, start, end, "Met voorzetsel 'om'")
+
+        assert start == expected_start
+        assert end == expected_start + timedelta(minutes=60)
+
     def test_morgen_9_uur_default_30_minutes(self, now: datetime):
         """'morgen 9 uur' met default 30 min."""
         start, end = parse_time_range("morgen 9 uur", now=now, default_minutes=30)

@@ -72,6 +72,18 @@ The server uses `pendulum` for robust timezone support. You can use:
 - **IANA names**: `Europe/Amsterdam`, `America/New_York`.
 - **Aliases**: `NYC`, `London`, `EST`, `CET`.
 
+### External Time & IP Detection
+
+The server includes `src/lib/external_time.py` which implements integration with WorldTimeAPI.
+
+**Functions:**
+
+- `get_local_timezone_from_ip()`: Detects the server's timezone based on its public IP.
+- `get_valid_timezones()`: Fetches a list of valid IANA timezones.
+- `get_current_time_from_api(timezone)`: Fetches the current time for a specific timezone.
+
+> **Note**: These functions use `httpx` with short timeouts (2.0s - 5.0s) to ensure non-blocking behavior.
+
 ---
 
 ## 🧪 Testing & Verification

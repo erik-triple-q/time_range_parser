@@ -56,7 +56,7 @@ class McpSseClient:
         ready = threading.Event()
         err: list[BaseException] = []
 
-        def rx():
+        def rx() -> None:
             try:
                 with self._client.stream(
                     "GET", self.sse_url, headers={"Accept": "text/event-stream"}
@@ -69,8 +69,6 @@ class McpSseClient:
                     for line in r.iter_lines():
                         if self._stop.is_set():
                             return
-                        if line is None:
-                            continue
                         line = line.strip("\r")
 
                         if line == "":
@@ -163,11 +161,16 @@ class McpSseClient:
 
         _LOGGER.info("Connected successfully")
 
-    def __enter__(self):
+    def __enter__(self) -> McpSseClient:
         self.connect()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any | None,
+    ) -> None:
         self.close()
 
     def close(self) -> None:
