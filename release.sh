@@ -1,7 +1,12 @@
 #!/bin/bash
 set -e
 
-VERSION="v1.0.0"
+# Extract version from pyproject.toml
+VERSION="v$(grep -m1 '^version =' pyproject.toml | cut -d '"' -f 2)"
+if [ -z "$VERSION" ] || [ "$VERSION" = "v" ]; then
+    echo "❌ Error: Could not extract version from pyproject.toml"
+    exit 1
+fi
 
 echo "🚀 Preparing release $VERSION..."
 

@@ -4,6 +4,7 @@ services:
     container_name: date-textparser-mcp
     ports:
       - "9000:9000"
+    init: true
     command: python server_main.py --sse
     environment:
       TZ: Europe/Amsterdam

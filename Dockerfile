@@ -36,5 +36,8 @@ COPY --from=builder /opt/venv /opt/venv
 # Copy the entrypoint script (Crucial: was missing in runtime stage)
 COPY server_main.py .
 
+# Copy source code (Required for src/lib imports which are not part of the installed package)
+COPY src/ src/
+
 EXPOSE 9000
 CMD ["python", "server_main.py", "--sse"]
