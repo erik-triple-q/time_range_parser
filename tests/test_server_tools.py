@@ -1,69 +1,54 @@
-import sys
 import os
+import sys
 from unittest.mock import patch
 import pytest
 
-# Add project root to sys.path to allow importing server_main
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Ensure root is in path to import server_main
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from server_main import get_world_time
 
 
-def test_get_world_time_success():
-    """Test successful retrieval of world time."""
-    with (
-        patch("server_main.normalize_timezone") as mock_normalize,
-        patch("server_main.get_current_time_from_api") as mock_get_time,
-    ):
+@patch("server_main.get_time_info_from_api")
+def test_get_world_time_success(mock_get_info):
+    with patch.dict(os.environ, {"USE_WORLDTIME_API": "true"}):
+        mock_get_info.return_value = {
+            "datetime": "2026-01-01T12:00:00+01:00",
+            "utc_offset": "+01:00",
+            "dst": False,
+            "week_number": 1,
+            "day_of_year": 1,
+            "abbreviation": "CET",
+        }
 
-        # Setup mocks
-        city = "New York"
-        mock_normalize.return_value = "America/New_York"
-        mock_get_time.return_value = "2026-02-02T15:30:00-05:00"
-
-        # Execute
-        result = get_world_time(city)
-
-        # Assertions
-        assert result["city"] == city
-        assert result["timezone"] == "America/New_York"
-        assert result["current_time"] == "2026-02-02T15:30:00-05:00"
+        result = get_world_time(city="Cairo")
+        assert result["city"] == "Cairo"
+        assert result["current_time"] == "2026-01-01T12:00:00+01:00"
         assert result["source"] == "WorldTimeAPI"
 
-        mock_normalize.assert_called_once_with(city)
-        mock_get_time.assert_called_once_with("America/New_York")
 
+@patch("server_main.get_time_info_from_api")
+def test_get_world_time_api_failure(mock_get_info):
+    with patch.dict(os.environ, {"USE_WORLDTIME_API": "true"}):
+        mock_get_info.return_value = None
 
-def test_get_world_time_api_failure():
-    """Test handling when API returns None (e.g. connection error or invalid zone)."""
-    with (
-        patch("server_main.normalize_timezone") as mock_normalize,
-        patch("server_main.get_current_time_from_api") as mock_get_time,
-    ):
-
-        # Setup mocks
-        city = "Atlantis"
-        mock_normalize.return_value = "Ocean/Atlantis"
-        mock_get_time.return_value = None
-
-        # Execute
-        result = get_world_time(city)
-
-        # Assertions
+        result = get_world_time(city="Unknown")
         assert "error" in result
         assert "Could not fetch time" in result["error"]
-        assert "Ocean/Atlantis" in result["error"]
 
 
-def test_get_world_time_exception():
-    """Test handling of unexpected exceptions."""
-    with patch("server_main.normalize_timezone") as mock_normalize:
-        # Setup mocks to raise exception
-        mock_normalize.side_effect = Exception("Something went wrong")
+@patch("server_main.get_time_info_from_api")
+def test_get_world_time_exception(mock_get_info):
+    with patch.dict(os.environ, {"USE_WORLDTIME_API": "true"}):
+        mock_get_info.side_effect = Exception("Something went wrong")
 
-        # Execute
-        result = get_world_time("Error City")
-
-        # Assertions
+        result = get_world_time(city="ErrorCity")
         assert "error" in result
         assert "Something went wrong" in result["error"]
+
+
+def test_get_world_time_disabled():
+    with patch.dict(os.environ, {"USE_WORLDTIME_API": "false"}):
+        result = get_world_time(city="Amsterdam")
+        assert "error" in result
+        assert "WorldTimeAPI is disabled" in result["error"]

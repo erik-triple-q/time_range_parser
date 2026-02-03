@@ -62,16 +62,22 @@ class MarkdownReporter:
                             pass
 
             if content_data:
-                # Pretty print the parsed JSON from the tool
-                self.lines.append("- **Result**:")
-                self.code_block(json.dumps(content_data, indent=2))
+                if "error" in content_data:
+                    self.lines.append(
+                        '- <span style="color:red;">**Tool Error**</span>:'
+                    )
+                    self.code_block(json.dumps(content_data, indent=2))
+                else:
+                    # Pretty print the parsed JSON from the tool
+                    self.lines.append("- **Result**:")
+                    self.code_block(json.dumps(content_data, indent=2))
             else:
                 # Fallback
                 self.lines.append("- **Raw Result**:")
                 self.code_block(json.dumps(result, indent=2))
 
         elif "error" in response:
-            self.lines.append("- **Error**:")
+            self.lines.append('- <span style="color:red;">**RPC Error**</span>:')
             self.code_block(json.dumps(response["error"], indent=2))
         else:
             self.lines.append("- **Unknown Response**:")
@@ -296,6 +302,17 @@ def main() -> None:
             "target_timezone": "New York",
         },
         {"text": "12:00", "source_timezone": "London", "target_timezone": "Tokyo"},
+        {
+            "text": "22:00",
+            "source_timezone": "cairo",
+            "target_timezone": "sydney",
+        },
+        {"text": "now", "source_timezone": "UTC", "target_timezone": "kolkata"},
+        {
+            "text": "12:00",
+            "source_timezone": "Amsterdam",
+            "target_timezone": "Mars/City",
+        },
     ]
     run_and_report_calls(
         reporter,

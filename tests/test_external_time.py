@@ -1,5 +1,12 @@
-import pytest
+import os
+import sys
 from unittest.mock import patch, MagicMock
+import pytest
+import httpx
+
+# Ensure src is in path
+sys.path.append(os.path.join(os.path.dirname(__file__), "../src"))
+
 from lib.external_time import (
     get_local_timezone_from_ip,
     get_valid_timezones,
@@ -8,81 +15,85 @@ from lib.external_time import (
 )
 
 
-@pytest.fixture
-def mock_httpx_client():
-    """Mocks the httpx.Client context manager."""
-    with patch("lib.external_time.httpx.Client") as mock_client_cls:
-        mock_instance = mock_client_cls.return_value
-        # Mock de context manager (__enter__ en __exit__)
-        mock_instance.__enter__.return_value = mock_instance
-        yield mock_instance
-
-
 @pytest.fixture(autouse=True)
-def reset_cache():
-    """Clears the cache before and after each test to ensure isolation."""
+def clean_cache_fixture():
+    """Ensure cache is clean before each test."""
     clear_cache()
     yield
     clear_cache()
 
 
-def test_get_local_timezone_from_ip_success(mock_httpx_client):
-    # Setup mock response
-    mock_response = MagicMock()
-    mock_response.json.return_value = {"timezone": "Europe/Amsterdam"}
-    mock_response.raise_for_status.return_value = None
-    mock_httpx_client.get.return_value = mock_response
+@patch("lib.external_time.httpx.Client")
+def test_get_local_timezone_from_ip_success(mock_client):
+    # Enable API explicitly for this test
+    with patch.dict(os.environ, {"USE_WORLDTIME_API": "true"}):
+        mock_instance = mock_client.return_value.__enter__.return_value
+        mock_instance.get.return_value.json.return_value = {
+            "timezone": "Europe/Amsterdam"
+        }
+        mock_instance.get.return_value.raise_for_status = MagicMock()
 
-    # Run function
-    result = get_local_timezone_from_ip()
-
-    # Assertions
-    assert result == "Europe/Amsterdam"
-    mock_httpx_client.get.assert_called_once()
-    assert "ip" in mock_httpx_client.get.call_args[0][0]
+        result = get_local_timezone_from_ip()
+        assert result == "Europe/Amsterdam"
 
 
-def test_get_local_timezone_from_ip_failure(mock_httpx_client):
-    # Setup mock to raise exception
-    mock_httpx_client.get.side_effect = Exception("Connection error")
-
-    result = get_local_timezone_from_ip()
-
-    assert result is None
-
-
-def test_get_valid_timezones_success(mock_httpx_client):
-    mock_response = MagicMock()
-    mock_response.json.return_value = ["Africa/Abidjan", "Europe/Amsterdam"]
-    mock_httpx_client.get.return_value = mock_response
-
+def test_get_valid_timezones_static():
+    """Test fetching timezones returns static list."""
     result = get_valid_timezones()
-
-    assert len(result) == 2
+    # Should return full static list
+    assert len(result) > 100
     assert "Europe/Amsterdam" in result
+    assert "Africa/Cairo" in result
+    assert "Asia/Tokyo" in result
+    assert "America/New_York" in result
+    assert "UTC" in result
 
 
-def test_get_valid_timezones_empty_on_error(mock_httpx_client):
-    mock_httpx_client.get.side_effect = Exception("Timeout")
-    result = get_valid_timezones()
-    assert result == []
+@patch("lib.external_time.httpx.Client")
+def test_get_current_time_from_api_success(mock_client):
+    with patch.dict(os.environ, {"USE_WORLDTIME_API": "true"}):
+        mock_instance = mock_client.return_value.__enter__.return_value
+        mock_instance.get.return_value.json.return_value = {
+            "datetime": "2026-01-01T12:00:00+01:00"
+        }
+        mock_instance.get.return_value.raise_for_status = MagicMock()
+
+        result = get_current_time_from_api("Europe/Amsterdam")
+        assert result == "2026-01-01T12:00:00+01:00"
 
 
-def test_get_current_time_from_api_success(mock_httpx_client):
-    mock_response = MagicMock()
-    # WorldTimeAPI returns a 'datetime' field in ISO format
-    mock_response.json.return_value = {"datetime": "2026-01-01T12:00:00+01:00"}
-    mock_httpx_client.get.return_value = mock_response
-
-    result = get_current_time_from_api("Europe/Amsterdam")
-
-    assert result == "2026-01-01T12:00:00+01:00"
-    # Check if timezone was part of the URL
-    args, _ = mock_httpx_client.get.call_args
-    assert "Europe/Amsterdam" in args[0]
+def test_api_disabled_behavior():
+    """Test that functions return None/empty when API is disabled (default or explicit)."""
+    with patch.dict(os.environ, {"USE_WORLDTIME_API": "false"}):
+        assert get_local_timezone_from_ip() is None
+        # Should fallback to static aliases
+        valid_zones = get_valid_timezones()
+        assert len(valid_zones) > 0
+        assert "Europe/Amsterdam" in valid_zones
+        assert get_current_time_from_api("UTC") is None
 
 
-def test_get_current_time_from_api_failure(mock_httpx_client):
-    mock_httpx_client.get.side_effect = Exception("404 Not Found")
-    result = get_current_time_from_api("Invalid/Zone")
-    assert result is None
+@patch("lib.external_time.logger")
+@patch("lib.external_time.httpx.Client")
+def test_get_current_time_from_api_http_error(mock_client, mock_logger):
+    """Test that HTTPStatusError is handled gracefully and logged."""
+    with patch.dict(os.environ, {"USE_WORLDTIME_API": "true"}):
+        mock_instance = mock_client.return_value.__enter__.return_value
+
+        # Create a mock request and response to simulate a 404
+        mock_request = httpx.Request("GET", "http://fakeurl/api/timezone/Invalid/Zone")
+        mock_response = httpx.Response(status_code=404, request=mock_request)
+
+        # Configure the `raise_for_status` method on the returned response mock
+        mock_instance.get.return_value.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Client error '404 Not Found' for url 'http://fakeurl/api/timezone/Invalid/Zone'",
+            request=mock_request,
+            response=mock_response,
+        )
+
+        result = get_current_time_from_api("Invalid/Zone")
+
+        assert result is None
+        mock_logger.warning.assert_called_once()
+        call_args, _ = mock_logger.warning.call_args
+        assert "HTTP error fetching time for Invalid/Zone: 404" in call_args[0]

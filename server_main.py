@@ -16,12 +16,17 @@ from date_textparser import (
     DEFAULT_TZ,
 )
 from date_textparser.core import normalize_timezone
+from date_textparser.vocabulary import TIMEZONE_ALIASES
 
 # Ensure src is in path to import lib.external_time
 src_path = os.path.join(os.path.dirname(__file__), "src")
 if src_path not in sys.path:
     sys.path.append(src_path)
-from lib.external_time import get_current_time_from_api, get_local_timezone_from_ip
+from lib.external_time import (
+    get_current_time_from_api,
+    get_local_timezone_from_ip,
+    get_time_info_from_api,
+)
 
 # Configure logging to stderr (important for MCP stdio)
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -79,10 +84,18 @@ def _resolve_context(
 ) -> tuple[str, str | None]:
     """
     Resolve effective timezone and 'now' timestamp, potentially using external APIs.
+
+    Fallback strategy:
+    - If USE_WORLDTIME_API is False (or fails), we rely on DEFAULT_TZ and system time.
+    - TIMEZONE_ALIASES are used for normalization (static list if API is off).
     """
     # 1. Resolve Timezone
     if timezone is None:
         timezone = get_local_timezone_from_ip()
+
+    # Apply smart normalization to ensure we have a valid IANA zone if possible
+    if timezone:
+        timezone = normalize_timezone(timezone)
 
     final_tz = timezone or _effective_default_tz
 
@@ -171,13 +184,14 @@ def convert_timezone(
     Example: text="15:00", source="Amsterdam", target="New York"
     """
     final_source_tz, final_now_iso = _resolve_context(source_timezone, now_iso)
+    final_target_tz = normalize_timezone(target_timezone)
     logger.info(
-        f"Tool 'convert_timezone' called: text='{text}', from='{final_source_tz}' to='{target_timezone}'"
+        f"Tool 'convert_timezone' called: text='{text}', from='{final_source_tz}' to='{final_target_tz}'"
     )
     try:
         return core_convert_to_timezone(
             text=text,
-            target_tz=target_timezone,
+            target_tz=final_target_tz,
             source_tz=final_source_tz,
             now_iso=final_now_iso,
         )
@@ -257,13 +271,18 @@ def get_world_time(city: str) -> dict[str, Any]:
         timezone = normalize_timezone(city)
 
         # 2. Fetch from API
-        time_iso = get_current_time_from_api(timezone)
+        info = get_time_info_from_api(timezone)
 
-        if time_iso:
+        if info:
             return {
                 "city": city,
                 "timezone": timezone,
-                "current_time": time_iso,
+                "current_time": info.get("datetime"),
+                "utc_offset": info.get("utc_offset"),
+                "dst": info.get("dst"),
+                "week_number": info.get("week_number"),
+                "day_of_year": info.get("day_of_year"),
+                "abbreviation": info.get("abbreviation"),
                 "source": "WorldTimeAPI",
             }
         else:
@@ -314,6 +333,7 @@ if __name__ == "__main__":
         logger.info(
             "USE_WORLDTIME_API is true. Attempting to detect local timezone from public IP..."
         )
+
         detected_tz = get_local_timezone_from_ip()
         if detected_tz:
             logger.info(

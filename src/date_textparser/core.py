@@ -34,6 +34,7 @@ from .vocabulary import (
     DURATION_UNITS,
     PERIOD_UNITS,
     RELATIVE_DAYS,
+    TIMEZONES,
 )
 from .result import ParseResult
 from .parsers import (
@@ -96,6 +97,17 @@ _WEEKDAY_MAP_NL_EN: dict[str, int] = {
 # =============================================================================
 # INTERNAL HELPERS
 # =============================================================================
+
+# Enrich TIMEZONE_ALIASES from TIMEZONES list
+for _tz in TIMEZONES:
+    _lower_tz = _tz.lower()
+    if _lower_tz not in TIMEZONE_ALIASES:
+        TIMEZONE_ALIASES[_lower_tz] = _tz
+
+    if "/" in _tz:
+        _city = _tz.split("/")[-1].replace("_", " ").lower()
+        if _city not in TIMEZONE_ALIASES:
+            TIMEZONE_ALIASES[_city] = _tz
 
 
 def normalize_timezone(tz: str) -> str:

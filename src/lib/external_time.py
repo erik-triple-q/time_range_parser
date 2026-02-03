@@ -5,6 +5,12 @@ import os
 from typing import Any
 import httpx
 
+try:
+    from date_textparser.vocabulary import TIMEZONE_ALIASES, TIMEZONES
+except ImportError:
+    TIMEZONE_ALIASES = {}
+    TIMEZONES = []
+
 logger = logging.getLogger(__name__)
 
 WORLD_TIME_API_BASE = "https://worldtimeapi.org/api"
@@ -17,7 +23,7 @@ _CACHE_LOADED = False
 
 # Cache Time-To-Live in seconds
 TTL_IP_TIMEZONE = 3600  # 1 hour
-TTL_VALID_TIMEZONES = 86400  # 24 hours
+TTL_TIME_INFO = 300  # 5 minutes
 
 
 def _is_api_enabled() -> bool:
@@ -61,6 +67,7 @@ def _get_from_cache(key: str, ttl: float) -> Any | None:
         timestamp, value = _CACHE[key]
         if time.time() - timestamp < ttl:
             logger.debug(f"Cache hit for {key}")
+            print(value)
             return value
         else:
             # Expired, remove from dict and save the change
@@ -124,32 +131,32 @@ def get_local_timezone_from_ip() -> str | None:
 
 def get_valid_timezones() -> list[str]:
     """
-    Fetches a list of valid timezones from WorldTimeAPI.
-    Results are cached for 24 hours.
+    Returns a list of valid timezones.
+    Uses local vocabulary definitions.
     """
-    if not _is_api_enabled():
-        logger.debug("WorldTimeAPI is disabled by USE_WORLDTIME_API flag.")
-        return []
+    logger.debug("Using local timezone definitions.")
+    return list(set(TIMEZONES) | set(TIMEZONE_ALIASES.values()))
 
-    cache_key = "valid_timezones"
-    cached = _get_from_cache(cache_key, TTL_VALID_TIMEZONES)
-    if cached:
-        logger.info(f"Retrieved {len(cached)} valid timezones from cache.")
-        return list(cached)
 
+def _fetch_timezone_data(timezone: str) -> dict[str, Any] | None:
+    """Helper to fetch raw timezone data from API with error handling."""
     try:
         with httpx.Client(timeout=5.0) as client:
-            response = client.get(f"{WORLD_TIME_API_BASE}/timezone")
+            response = client.get(f"{WORLD_TIME_API_BASE}/timezone/{timezone}")
             response.raise_for_status()
             data = response.json()
-            if isinstance(data, list):
-                result = [str(x) for x in data]
-                _save_to_cache(cache_key, result)
-                return result
-            return []
+            if isinstance(data, dict):
+                return data
+            logger.warning(f"Unexpected response format for {timezone}: {type(data)}")
+    except httpx.HTTPStatusError as e:
+        logger.warning(
+            f"HTTP error fetching time for {timezone}: {e.response.status_code} - {e}"
+        )
+    except httpx.RequestError as e:
+        logger.warning(f"Network error fetching time for {timezone}: {e}")
     except Exception as e:
-        logger.warning(f"Failed to fetch valid timezones: {e}")
-        return []
+        logger.warning(f"Unexpected error fetching time for {timezone}: {e}")
+    return None
 
 
 def get_current_time_from_api(timezone: str) -> str | None:
@@ -161,16 +168,31 @@ def get_current_time_from_api(timezone: str) -> str | None:
         logger.debug("WorldTimeAPI is disabled by USE_WORLDTIME_API flag.")
         return None
 
-    try:
-        with httpx.Client(timeout=5.0) as client:
-            response = client.get(f"{WORLD_TIME_API_BASE}/timezone/{timezone}")
-            response.raise_for_status()
-            data = response.json()
-            if isinstance(data, dict):
-                dt = data.get("datetime")
-                if isinstance(dt, str):
-                    return dt
-            return None
-    except Exception as e:
-        logger.warning(f"Failed to fetch current time for {timezone}: {e}")
+    data = _fetch_timezone_data(timezone)
+    if data:
+        dt = data.get("datetime")
+        if isinstance(dt, str):
+            return dt
+    return None
+
+
+def get_time_info_from_api(timezone: str) -> dict[str, Any] | None:
+    """
+    Fetches detailed time info for a specific timezone from WorldTimeAPI.
+    Returns dict with datetime, dst, utc_offset, etc. or None if failed.
+    """
+    if not _is_api_enabled():
+        logger.debug("WorldTimeAPI is disabled by USE_WORLDTIME_API flag.")
         return None
+
+    cache_key = f"time_info_{timezone}"
+    cached = _get_from_cache(cache_key, TTL_TIME_INFO)
+    if cached:
+        logger.info(f"Retrieved time info for '{timezone}' from cache.")
+        return dict(cached)
+
+    data = _fetch_timezone_data(timezone)
+    if data:
+        _save_to_cache(cache_key, data)
+        return data
+    return None
