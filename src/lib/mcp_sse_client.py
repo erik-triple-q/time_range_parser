@@ -101,9 +101,7 @@ class McpSseClient:
                             # If it's not an endpoint event, try to parse as JSON-RPC response
                             # Often JSON-RPC responses are delivered as SSE "message" events,
                             # or as default events without an explicit 'event:' line.
-                            if (
-                                data
-                            ):  # and (event_type is None or event_type == "message"): # More explicit check if needed
+                            if data:  # and (event_type is None or event_type == "message"): # More explicit check if needed
                                 _LOGGER.debug(
                                     "Attempting to parse SSE data as JSON: %s", data
                                 )
