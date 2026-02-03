@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import time
 from typing import Any
+import sys
+import os
 
 from mcp_sse_client import McpSseClient
 
@@ -329,18 +331,6 @@ def main() -> None:
         "resolve_time_range",
         tests_now_iso,
         "Fixed Reference Time (2026-01-01)",
-    )
-
-    # 10) Tool: resolve_time_range_debug
-    reporter.header(2, "9. Tool: `resolve_time_range_debug`")
-    tests_debug = ["morgen"]
-    run_and_report_calls(
-        reporter,
-        c,
-        req_id_counter,
-        "resolve_time_range_debug",
-        tests_debug,
-        "Debug Output (Assumptions)",
     )
 
     c.close()

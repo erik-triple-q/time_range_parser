@@ -1,5 +1,6 @@
 import logging
 import time
+import os
 from typing import Any
 import httpx
 
@@ -13,6 +14,11 @@ _CACHE: dict[str, tuple[float, Any]] = {}
 # Cache Time-To-Live in seconds
 TTL_IP_TIMEZONE = 3600  # 1 hour
 TTL_VALID_TIMEZONES = 86400  # 24 hours
+
+
+def _is_api_enabled() -> bool:
+    """Check if the WorldTimeAPI integration is enabled via environment variable."""
+    return os.environ.get("USE_WORLDTIME_API", "false").lower() in ("true", "1", "yes")
 
 
 def _get_from_cache(key: str, ttl: float) -> Any | None:
@@ -43,6 +49,10 @@ def get_local_timezone_from_ip() -> str | None:
     Returns the IANA timezone string (e.g., "Europe/Amsterdam") or None if failed.
     Results are cached for 1 hour.
     """
+    if not _is_api_enabled():
+        logger.debug("WorldTimeAPI is disabled by USE_WORLDTIME_API flag.")
+        return None
+
     cache_key = "local_timezone_ip"
     cached = _get_from_cache(cache_key, TTL_IP_TIMEZONE)
     if cached:
@@ -70,6 +80,10 @@ def get_valid_timezones() -> list[str]:
     Fetches a list of valid timezones from WorldTimeAPI.
     Results are cached for 24 hours.
     """
+    if not _is_api_enabled():
+        logger.debug("WorldTimeAPI is disabled by USE_WORLDTIME_API flag.")
+        return []
+
     cache_key = "valid_timezones"
     cached = _get_from_cache(cache_key, TTL_VALID_TIMEZONES)
     if cached:
@@ -95,6 +109,10 @@ def get_current_time_from_api(timezone: str) -> str | None:
     Fetches the current time for a specific timezone from WorldTimeAPI.
     Returns ISO-8601 string or None if failed.
     """
+    if not _is_api_enabled():
+        logger.debug("WorldTimeAPI is disabled by USE_WORLDTIME_API flag.")
+        return None
+
     try:
         with httpx.Client(timeout=5.0) as client:
             response = client.get(f"{WORLD_TIME_API_BASE}/timezone/{timezone}")

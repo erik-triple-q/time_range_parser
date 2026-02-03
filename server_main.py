@@ -10,7 +10,7 @@ from mcp.server.fastmcp import FastMCP
 
 from date_textparser import (
     parse_time_range_full,
-    convert_to_timezone,
+    convert_to_timezone as core_convert_to_timezone,
     expand_recurrence,
     calculate_duration,
     DEFAULT_TZ,
@@ -21,7 +21,7 @@ from date_textparser.core import normalize_timezone
 src_path = os.path.join(os.path.dirname(__file__), "src")
 if src_path not in sys.path:
     sys.path.append(src_path)
-from lib.external_time import get_current_time_from_api
+from lib.external_time import get_current_time_from_api, get_local_timezone_from_ip
 
 # Configure logging to stderr (important for MCP stdio)
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -33,6 +33,9 @@ logging.basicConfig(
 logger = logging.getLogger("time-range-parser")
 
 mcp = FastMCP("time-range-parser")
+
+# This will hold the effective default timezone, which can be updated at startup.
+_effective_default_tz = DEFAULT_TZ
 
 
 def get_app_version() -> str:
@@ -85,7 +88,7 @@ def analyze_error_hint(text: str) -> str | None:
 @mcp.tool(name="resolve_time_range")
 def resolve_time_range(
     text: str,
-    timezone: str = DEFAULT_TZ,
+    timezone: str | None = None,
     now_iso: str | None = None,
     fiscal_start_month: int = 1,
 ) -> dict[str, Any]:
@@ -104,20 +107,21 @@ def resolve_time_range(
     Returns:
         Dictionary with input, timezone, start, end (ISO-8601), and kind
     """
+    final_tz = timezone or _effective_default_tz
     logger.info(
-        f"Tool 'resolve_time_range' called: text='{text}', timezone='{timezone}', fiscal_start={fiscal_start_month}"
+        f"Tool 'resolve_time_range' called: text='{text}', timezone='{final_tz}', fiscal_start={fiscal_start_month}"
     )
 
     # 1. Check Custom Events (Point B)
     custom_result = check_custom_events(text)
     if custom_result:
-        custom_result["timezone"] = timezone  # Override default if needed
+        custom_result["timezone"] = final_tz  # Override default if needed
         return custom_result
 
     try:
         # Note: parse_time_range_full needs to be updated to accept fiscal_start_month
         result = parse_time_range_full(
-            text=text, tz=timezone, now_iso=now_iso
+            text=text, tz=final_tz, now_iso=now_iso
         )  # TODO: Pass fiscal_start_month
 
         return {
@@ -140,21 +144,22 @@ def resolve_time_range(
 def convert_timezone(
     text: str,
     target_timezone: str,
-    source_timezone: str = DEFAULT_TZ,
+    source_timezone: str | None = None,
     now_iso: str | None = None,
 ) -> dict[str, Any]:
     """
     Convert a date/time expression from one timezone to another.
     Example: text="15:00", source="Amsterdam", target="New York"
     """
+    final_source_tz = source_timezone or _effective_default_tz
     logger.info(
-        f"Tool 'convert_timezone' called: text='{text}', from='{source_timezone}' to='{target_timezone}'"
+        f"Tool 'convert_timezone' called: text='{text}', from='{final_source_tz}' to='{target_timezone}'"
     )
     try:
-        return convert_to_timezone(
+        return core_convert_to_timezone(
             text=text,
             target_tz=target_timezone,
-            source_tz=source_timezone,
+            source_tz=final_source_tz,
             now_iso=now_iso,
         )
     except Exception as e:
@@ -165,7 +170,7 @@ def convert_timezone(
 @mcp.tool(name="expand_recurrence")
 def expand_recurrence_tool(
     text: str,
-    timezone: str = DEFAULT_TZ,
+    timezone: str | None = None,
     count: int = 10,
     now_iso: str | None = None,
 ) -> dict[str, Any]:
@@ -173,9 +178,12 @@ def expand_recurrence_tool(
     Generate a list of dates based on a recurrence rule.
     Example: text="elke vrijdag", count=5 -> returns next 5 Fridays.
     """
-    logger.info(f"Tool 'expand_recurrence' called: text='{text}', count={count}")
+    final_tz = timezone or _effective_default_tz
+    logger.info(
+        f"Tool 'expand_recurrence' called: text='{text}', count={count}, timezone='{final_tz}'"
+    )
     try:
-        return expand_recurrence(text=text, tz=timezone, now_iso=now_iso, count=count)
+        return expand_recurrence(text=text, tz=final_tz, now_iso=now_iso, count=count)
     except Exception as e:
         logger.error(f"Error expanding recurrence: {e}")
         return {"error": str(e)}
@@ -185,17 +193,20 @@ def expand_recurrence_tool(
 def calculate_duration_tool(
     start: str,
     end: str,
-    timezone: str = DEFAULT_TZ,
+    timezone: str | None = None,
     now_iso: str | None = None,
 ) -> dict[str, Any]:
     """
     Calculate the duration between two dates/times.
     Example: start="now", end="christmas" -> returns days/hours until christmas.
     """
-    logger.info(f"Tool 'calculate_duration' called: start='{start}', end='{end}'")
+    final_tz = timezone or _effective_default_tz
+    logger.info(
+        f"Tool 'calculate_duration' called: start='{start}', end='{end}', timezone='{final_tz}'"
+    )
     try:
         return calculate_duration(
-            start_text=start, end_text=end, tz=timezone, now_iso=now_iso
+            start_text=start, end_text=end, tz=final_tz, now_iso=now_iso
         )
     except Exception as e:
         logger.error(f"Error calculating duration: {e}")
@@ -208,6 +219,17 @@ def get_world_time(city: str) -> dict[str, Any]:
     Get the current time for a specific city or timezone via WorldTimeAPI.
     Example: city="New York" -> returns current time in America/New_York.
     """
+    use_worldtime_api = os.environ.get("USE_WORLDTIME_API", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    if not use_worldtime_api:
+        logger.warning(
+            "Tool 'get_world_time' called, but WorldTimeAPI is disabled by server configuration."
+        )
+        return {"error": "WorldTimeAPI is disabled by server configuration."}
+
     logger.info(f"Tool 'get_world_time' called: city='{city}'")
     try:
         # 1. Normalize to IANA timezone (e.g. "London" -> "Europe/London")
@@ -239,7 +261,7 @@ def server_info() -> dict[str, Any]:
         "name": "time-range-parser",
         "version": get_app_version(),
         "description": "Natural language date/time range parser for Dutch and English",
-        "default_timezone": DEFAULT_TZ,
+        "default_timezone": _effective_default_tz,
         "resolution": "seconds",
         "capabilities": {
             "natural_language_parsing": True,
@@ -259,6 +281,27 @@ def server_info() -> dict[str, Any]:
 
 
 if __name__ == "__main__":
+    # Check for WorldTimeAPI usage at startup
+    use_worldtime_api = os.environ.get("USE_WORLDTIME_API", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    if use_worldtime_api:
+        logger.info(
+            "USE_WORLDTIME_API is true. Attempting to detect local timezone from public IP..."
+        )
+        detected_tz = get_local_timezone_from_ip()
+        if detected_tz:
+            logger.info(
+                f"WorldTimeAPI detected timezone '{detected_tz}'. Overriding default '{_effective_default_tz}'."
+            )
+            _effective_default_tz = detected_tz
+        else:
+            logger.warning(
+                f"Could not detect timezone from WorldTimeAPI. Using default '{_effective_default_tz}'."
+            )
+
     # Check of we als SSE server moeten draaien (bv. in Docker)
     # Via --sse flag of environment variable
     if "--sse" in sys.argv or os.environ.get("MCP_TRANSPORT") == "sse":

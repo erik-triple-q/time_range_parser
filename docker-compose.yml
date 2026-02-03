@@ -11,4 +11,4 @@ services:
       HOST: ${HOST:-0.0.0.0}
       PORT: ${PORT:-9000}
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
-    restart: unless-stopped
+      USE_WORLDTIME_API: ${USE_WORLDTIME_API:-false}

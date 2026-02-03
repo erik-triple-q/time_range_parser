@@ -4,7 +4,7 @@
 dev:
 	docker compose up --build
 
-# Start productie omgeving (background, poort 8000, info logs, auto-restart)
+# Start productie omgeving (background, poort 9000, info logs, auto-restart)
 prod:
 	docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
