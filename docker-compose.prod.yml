@@ -1,0 +1,4 @@
+services:
+  date-textparser-mcp:
+    # Robuuster herstart-beleid voor productie
+    restart: always

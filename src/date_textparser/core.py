@@ -103,7 +103,7 @@ def normalize_timezone(tz: str) -> str:
     if not tz:
         return DEFAULT_TZ
 
-    cleaned = tz.strip()
+    cleaned = tz.strip().strip("'\"")
     lower = cleaned.lower()
 
     if lower in TIMEZONE_ALIASES:
@@ -387,7 +387,7 @@ def _parse_time_range_internal(
     now: pendulum.DateTime,
     default_minutes: int = DEFAULT_EVENT_DURATION_MINUTES,
 ) -> ParseResult:
-    text = (text or "").strip()
+    text = (text or "").strip().strip("'\"")
     if not text:
         logger.warning("Empty input provided")
         raise ValueError("Lege invoer.")

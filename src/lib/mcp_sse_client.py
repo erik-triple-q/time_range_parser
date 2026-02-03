@@ -4,6 +4,7 @@ import json
 import logging
 import queue
 import threading
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
@@ -81,9 +82,15 @@ class McpSseClient:
                                     if not path.startswith("/"):
                                         path = "/" + path
                                     self._messages_url = self.base_url + path
+
+                                    # Extract session_id for better logging
+                                    parsed = urllib.parse.urlparse(self._messages_url)
+                                    qs = urllib.parse.parse_qs(parsed.query)
+                                    sid = qs.get("session_id", ["unknown"])[0]
                                     _LOGGER.info(
-                                        "Received messages endpoint: %s",
+                                        "Received messages endpoint: %s (Session ID: %s)",
                                         self._messages_url,
+                                        sid,
                                     )
                                     ready.set()
                                 # Reset event_type and data_lines for the next event
@@ -94,7 +101,9 @@ class McpSseClient:
                             # If it's not an endpoint event, try to parse as JSON-RPC response
                             # Often JSON-RPC responses are delivered as SSE "message" events,
                             # or as default events without an explicit 'event:' line.
-                            if data:  # and (event_type is None or event_type == "message"): # More explicit check if needed
+                            if (
+                                data
+                            ):  # and (event_type is None or event_type == "message"): # More explicit check if needed
                                 _LOGGER.debug(
                                     "Attempting to parse SSE data as JSON: %s", data
                                 )

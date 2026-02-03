@@ -4,6 +4,7 @@ import os
 import sys
 from typing import Any
 import re
+from importlib.metadata import version, PackageNotFoundError
 
 from mcp.server.fastmcp import FastMCP
 
@@ -23,14 +24,23 @@ if src_path not in sys.path:
 from lib.external_time import get_current_time_from_api
 
 # Configure logging to stderr (important for MCP stdio)
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
 logger = logging.getLogger("time-range-parser")
 
 mcp = FastMCP("time-range-parser")
+
+
+def get_app_version() -> str:
+    try:
+        return version("time-range-parser")
+    except (ImportError, PackageNotFoundError):
+        return "0.1.0"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuration & Custom Events (Point B)
@@ -46,7 +56,7 @@ CUSTOM_EVENTS = {
 
 def check_custom_events(text: str) -> dict[str, Any] | None:
     """Check if text matches a known custom event."""
-    key = text.strip().lower()
+    key = text.strip().strip("'\"").lower()
     if key in CUSTOM_EVENTS:
         # Simple implementation: return the date as start/end
         # Ideally, parse the value to ensure ISO format
@@ -124,55 +134,6 @@ def resolve_time_range(
 
         logger.error(f"Error parsing '{text}': {error_msg}")
         return {"error": error_msg, "input": text}
-
-
-@mcp.tool(name="resolve_time_range_simple")
-def resolve_time_range_simple(
-    text: str,
-    timezone: str = DEFAULT_TZ,
-    now_iso: str | None = None,
-) -> dict[str, Any]:
-    """
-    Parse and return only start/end/timezone (minimal output).
-    Output is SECOND resolution only (no microseconds).
-    """
-    try:
-        result = parse_time_range_full(text=text, tz=timezone, now_iso=now_iso)
-
-        return {
-            "timezone": result.timezone,
-            "start": result.start.set(microsecond=0).to_iso8601_string(),
-            "end": result.end.set(microsecond=0).to_iso8601_string(),
-        }
-    except Exception as e:
-        logger.error(f"Error in simple parse: {e}")
-        return {"error": str(e)}
-
-
-@mcp.tool(name="resolve_time_range_debug")
-def resolve_time_range_debug(
-    text: str,
-    timezone: str = DEFAULT_TZ,
-    now_iso: str | None = None,
-) -> dict[str, Any]:
-    """
-    Parse and return extended debug output including all internal assumptions/metadata.
-    Logs full stack traces on error.
-    Output is SECOND resolution only (no microseconds).
-    """
-    logger.debug(f"Debug parse called for '{text}'")
-    try:
-        result = parse_time_range_full(text=text, tz=timezone, now_iso=now_iso)
-        return {
-            "input": text,
-            "timezone": result.timezone,
-            "start": result.start.set(microsecond=0).to_iso8601_string(),
-            "end": result.end.set(microsecond=0).to_iso8601_string(),
-            "assumptions": result.assumptions,
-        }
-    except Exception as e:
-        logger.exception("Exception in debug parse")
-        return {"error": str(e), "traceback": "Check server logs"}
 
 
 @mcp.tool(name="convert_timezone")
@@ -276,12 +237,18 @@ def server_info() -> dict[str, Any]:
     """Basic server info for clients."""
     return {
         "name": "time-range-parser",
+        "version": get_app_version(),
+        "description": "Natural language date/time range parser for Dutch and English",
         "default_timezone": DEFAULT_TZ,
         "resolution": "seconds",
+        "capabilities": {
+            "natural_language_parsing": True,
+            "recurrence_expansion": True,
+            "timezone_conversion": True,
+            "duration_calculation": True,
+        },
         "tools": [
             "resolve_time_range",
-            "resolve_time_range_simple",
-            "resolve_time_range_debug",
             "convert_timezone",
             "expand_recurrence",
             "calculate_duration",
@@ -307,6 +274,8 @@ if __name__ == "__main__":
         args, _ = parser.parse_known_args()
 
         logger.info(f"Starting SSE server on {args.host}:{args.port}")
-        uvicorn.run(mcp.sse_app(), host=args.host, port=args.port, log_level="info")
+        uvicorn.run(
+            mcp.sse_app(), host=args.host, port=args.port, log_level=LOG_LEVEL.lower()
+        )
     else:
         mcp.run()

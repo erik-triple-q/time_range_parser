@@ -3,11 +3,12 @@ services:
     build: .
     container_name: date-textparser-mcp
     ports:
-      - "9000:9000"
+      - "${DOCKER_PORT:-9000}:${PORT:-9000}"
     init: true
     command: python server_main.py --sse
     environment:
-      TZ: Europe/Amsterdam
-      HOST: 0.0.0.0
-      PORT: "9000"
+      TZ: ${TZ:-Europe/Amsterdam}
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-9000}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     restart: unless-stopped
