@@ -1,4 +1,4 @@
-.PHONY: dev prod down logs shell test release
+.PHONY: dev prod down logs shell test release clear-cache
 
 # Start development omgeving (foreground, debug logs, poort 9000)
 dev:
@@ -27,3 +27,7 @@ test:
 # Maak een nieuwe release (versie bump + docker build)
 release:
 	./release.sh
+
+# Clear the docker volume used for caching
+clear-cache:
+	docker volume rm dateparser_cache || true

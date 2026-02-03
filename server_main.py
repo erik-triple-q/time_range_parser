@@ -74,6 +74,25 @@ def check_custom_events(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _resolve_context(
+    timezone: str | None, now_iso: str | None
+) -> tuple[str, str | None]:
+    """
+    Resolve effective timezone and 'now' timestamp, potentially using external APIs.
+    """
+    # 1. Resolve Timezone
+    if timezone is None:
+        timezone = get_local_timezone_from_ip()
+
+    final_tz = timezone or _effective_default_tz
+
+    # 2. Resolve Now
+    if now_iso is None:
+        now_iso = get_current_time_from_api(final_tz)
+
+    return final_tz, now_iso
+
+
 def analyze_error_hint(text: str) -> str | None:
     """Analyze input to provide smart error hints (Point C)."""
     # Check for invalid quarters (Q5-Q9)
@@ -107,7 +126,7 @@ def resolve_time_range(
     Returns:
         Dictionary with input, timezone, start, end (ISO-8601), and kind
     """
-    final_tz = timezone or _effective_default_tz
+    final_tz, final_now_iso = _resolve_context(timezone, now_iso)
     logger.info(
         f"Tool 'resolve_time_range' called: text='{text}', timezone='{final_tz}', fiscal_start={fiscal_start_month}"
     )
@@ -121,7 +140,7 @@ def resolve_time_range(
     try:
         # Note: parse_time_range_full needs to be updated to accept fiscal_start_month
         result = parse_time_range_full(
-            text=text, tz=final_tz, now_iso=now_iso
+            text=text, tz=final_tz, now_iso=final_now_iso
         )  # TODO: Pass fiscal_start_month
 
         return {
@@ -151,7 +170,7 @@ def convert_timezone(
     Convert a date/time expression from one timezone to another.
     Example: text="15:00", source="Amsterdam", target="New York"
     """
-    final_source_tz = source_timezone or _effective_default_tz
+    final_source_tz, final_now_iso = _resolve_context(source_timezone, now_iso)
     logger.info(
         f"Tool 'convert_timezone' called: text='{text}', from='{final_source_tz}' to='{target_timezone}'"
     )
@@ -160,7 +179,7 @@ def convert_timezone(
             text=text,
             target_tz=target_timezone,
             source_tz=final_source_tz,
-            now_iso=now_iso,
+            now_iso=final_now_iso,
         )
     except Exception as e:
         logger.error(f"Error converting timezone: {e}")
@@ -178,12 +197,14 @@ def expand_recurrence_tool(
     Generate a list of dates based on a recurrence rule.
     Example: text="elke vrijdag", count=5 -> returns next 5 Fridays.
     """
-    final_tz = timezone or _effective_default_tz
+    final_tz, final_now_iso = _resolve_context(timezone, now_iso)
     logger.info(
         f"Tool 'expand_recurrence' called: text='{text}', count={count}, timezone='{final_tz}'"
     )
     try:
-        return expand_recurrence(text=text, tz=final_tz, now_iso=now_iso, count=count)
+        return expand_recurrence(
+            text=text, tz=final_tz, now_iso=final_now_iso, count=count
+        )
     except Exception as e:
         logger.error(f"Error expanding recurrence: {e}")
         return {"error": str(e)}
@@ -200,13 +221,13 @@ def calculate_duration_tool(
     Calculate the duration between two dates/times.
     Example: start="now", end="christmas" -> returns days/hours until christmas.
     """
-    final_tz = timezone or _effective_default_tz
+    final_tz, final_now_iso = _resolve_context(timezone, now_iso)
     logger.info(
         f"Tool 'calculate_duration' called: start='{start}', end='{end}', timezone='{final_tz}'"
     )
     try:
         return calculate_duration(
-            start_text=start, end_text=end, tz=final_tz, now_iso=now_iso
+            start_text=start, end_text=end, tz=final_tz, now_iso=final_now_iso
         )
     except Exception as e:
         logger.error(f"Error calculating duration: {e}")
@@ -257,11 +278,13 @@ def get_world_time(city: str) -> dict[str, Any]:
 @mcp.tool(name="server_info")
 def server_info() -> dict[str, Any]:
     """Basic server info for clients."""
+    # Try to get the most accurate default timezone for reporting
+    detected_tz = get_local_timezone_from_ip()
     return {
         "name": "time-range-parser",
         "version": get_app_version(),
         "description": "Natural language date/time range parser for Dutch and English",
-        "default_timezone": _effective_default_tz,
+        "default_timezone": detected_tz or _effective_default_tz,
         "resolution": "seconds",
         "capabilities": {
             "natural_language_parsing": True,

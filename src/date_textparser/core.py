@@ -112,6 +112,16 @@ def normalize_timezone(tz: str) -> str:
     return cleaned
 
 
+def _resolve_now(now_iso: str | None, tz: str) -> pendulum.DateTime:
+    """Resolve 'now' from an ISO string or get the current time in the given timezone."""
+    if now_iso:
+        # The `tz` here acts as a default for naive timestamps.
+        parsed = pendulum.parse(now_iso, tz=tz)
+        # Ensure the final object is in the target timezone.
+        return cast(pendulum.DateTime, parsed).in_timezone(tz)
+    return pendulum.now(tz)
+
+
 def _to_naive_datetime(dt: pendulum.DateTime) -> dt_datetime:
     return dt_datetime(
         dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, dt.microsecond
@@ -698,11 +708,7 @@ def parse_time_range_full(
         raise ValueError("Lege invoer.")
 
     tz = normalize_timezone(tz)
-    if now_iso:
-        parsed = pendulum.parse(now_iso, tz=tz)
-        now = cast(pendulum.DateTime, parsed).in_timezone(tz)
-    else:
-        now = pendulum.now(tz)
+    now = _resolve_now(now_iso, tz)
     return _parse_time_range_internal(text, tz, now, default_minutes=default_minutes)
 
 
@@ -750,11 +756,7 @@ def expand_recurrence(
     Generate a list of dates based on a recurrence rule (e.g. 'every friday').
     """
     tz = normalize_timezone(tz)
-    if now_iso:
-        parsed = pendulum.parse(now_iso, tz=tz)
-        now = cast(pendulum.DateTime, parsed).in_timezone(tz)
-    else:
-        now = pendulum.now(tz)
+    now = _resolve_now(now_iso, tz)
     normalized = text.lower()
 
     interval_val = 1
