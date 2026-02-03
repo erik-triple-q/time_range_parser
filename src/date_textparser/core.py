@@ -93,6 +93,8 @@ _WEEKDAY_MAP_NL_EN: dict[str, int] = {
     "sunday": 6,
 }
 
+NOW_KEYWORDS: set[str] = {"nu", "now", "sysdate"}
+
 
 # =============================================================================
 # INTERNAL HELPERS
@@ -415,6 +417,22 @@ def _parse_time_range_internal(
         raise ValueError("Lege invoer.")
 
     logger.info(f"Parsing: '{text}' (now={now.to_datetime_string()}, tz={tz})")
+
+    if text.lower() in NOW_KEYWORDS:
+        logger.debug(f"Recognized 'now' keyword: '{text}'")
+        start = now
+        end = start.add(minutes=default_minutes)
+        result = ParseResult(
+            start=start,
+            end=end,
+            timezone=tz,
+            assumptions={
+                "kind": "now_keyword_with_default_duration",
+                "default_minutes": default_minutes,
+                "base_now": now.to_iso8601_string(),
+            },
+        )
+        return _finalize_result(result)
 
     normalized_text = normalize_dutch_time(text)
 
