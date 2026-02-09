@@ -21,3 +21,22 @@ htmlcov/
 .DS_Store
 .vscode/
 .idea/
+
+# Environment files (secrets)
+.env
+.env.prod
+.env.local
+
+# Developer-specific (Claude AI)
+.claude/
+CLAUDE.md
+
+# Runtime caches
+cache/
+*.log
+*.pid
+
+# Temporary files
+*.tmp
+*.swp
+*~

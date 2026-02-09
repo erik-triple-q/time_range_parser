@@ -186,7 +186,7 @@ cat <<'EOF'
 
   4. Integration test:
      # Terminal 1: uv run python server_main.py --sse
-     # Terminal 2: uv run python mcp_client_httpx.py
+     # Terminal 2: uv run python examples/mcp_client_httpx.py
 
 📚 Documentation:
   - README.md      - Getting started & features

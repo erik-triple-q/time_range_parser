@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Natural language date/time range parser for Dutch and English. Designed as a **Model Context Protocol (MCP) server** to provide date/time parsing capabilities to language models."
 readme = "README.md"
 requires-python = ">=3.12"
+license = {text = "MIT"}
 
 dependencies = [
     "dateparser>=1.2.2",
@@ -18,6 +19,11 @@ dependencies = [
     "requests>=2.32.5",
     "uvicorn>=0.30.0",
 ]
+
+[project.urls]
+Documentation = "https://github.com/yourusername/time_range_parser#readme"
+Repository = "https://github.com/yourusername/time_range_parser"
+Issues = "https://github.com/yourusername/time_range_parser/issues"
 
 [project.optional-dependencies]
 dev = [

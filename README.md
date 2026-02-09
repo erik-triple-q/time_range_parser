@@ -2,7 +2,7 @@
 
 Natural language date/time range parser for Dutch and English. Designed as a **Model Context Protocol (MCP) server** for seamless integration with Claude Desktop, VS Code, Cursor, and other MCP clients.
 
-For detailed API documentation, testing, and development guides, see [TECHNICAL.md](TECHNICAL.md).
+For detailed API documentation, testing, and development guides, see [docs/TECHNICAL.md](docs/TECHNICAL.md).
 
 ---
 
@@ -68,7 +68,7 @@ LLMs often struggle with calculating exact dates for "last month" or "Q1". This 
 3. **Server:** Returns `{"start": "2026-02-01T00:00:00", "end": "2026-02-28T23:59:59"}`
 4. **LLM:** Generates SQL: `SELECT sum(amount) FROM orders WHERE created_at BETWEEN '2026-02-01' AND '2026-02-28'`
 
-> **Try it out:** Run the included example script `uv run python text_to_sql_example.py` to see this in action.
+> **Try it out:** Run the included example script `uv run python examples/text_to_sql_example.py` to see this in action.
 
 ---
 
@@ -111,7 +111,7 @@ uv run python server_main.py --sse
 
 ### Available Tools
 
-See TECHNICAL.md for the full API reference.
+See [docs/TECHNICAL.md](docs/TECHNICAL.md) for the full API reference.
 
 - `resolve_time_range`
 - `resolve_time_range_simple`
@@ -136,7 +136,7 @@ docker compose up --build
 
 The server will listen on `http://localhost:9000/sse`.
 
-See DOCKER.md for detailed commands.
+See [docs/DOCKER.md](docs/DOCKER.md) for detailed commands.
 
 ---
 
@@ -238,9 +238,9 @@ uv run python server_main.py --sse
 **Step 2: Run the test client**
 
 ```bash
-uv run python mcp_client_request.py
+uv run python examples/mcp_client_request.py
 # OR
-uv run python mcp_client_httpx.py
+uv run python examples/mcp_client_httpx.py
 ```
 
 This script connects to the running server, performs a handshake, lists tools, and runs a series of challenging test cases.
