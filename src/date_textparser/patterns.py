@@ -11,9 +11,11 @@ import re
 from .vocabulary import (
     ALL_WEEKDAYS,
     DUTCH_NUMBER_WORDS,
+    DURATION_UNITS,
     ENGLISH_NUMBER_WORDS,
     MONTH_NAMES,
     MOVING_HOLIDAY_NAMES,
+    ORDINALS,
     PERIOD_UNITS,
     SEASONS,
     FIXED_HOLIDAYS,
@@ -184,7 +186,7 @@ _MONTH_NAMES_REGEX = "|".join(
     re.escape(m) for m in sorted(MONTH_NAMES.keys(), key=len, reverse=True)
 )
 
-_ALL_NUMBER_WORDS = {**DUTCH_NUMBER_WORDS, **ENGLISH_NUMBER_WORDS}
+_ALL_NUMBER_WORDS = {**DUTCH_NUMBER_WORDS, **ENGLISH_NUMBER_WORDS, **ORDINALS}
 
 DUTCH_DAY_MONTH_PATTERN = re.compile(
     r"\b(?:op\s+|the\s+|on\s+)??"
@@ -214,15 +216,13 @@ AGO_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Build pattern dynamically from DURATION_UNITS vocabulary (single source of truth)
+_DURATION_UNITS_REGEX = "|".join(
+    re.escape(u) for u in sorted(DURATION_UNITS.keys(), key=len, reverse=True)
+)
+
 DURATION_PATTERN = re.compile(
-    r"\b(?P<n>\d+)\s*(?P<u>"
-    r"min(uten?)?|mins?|"
-    r"uur|uren|hours?|h|"
-    r"dag(en)?|days?|d|"
-    r"week|weken|weeks?|w|"
-    r"maand(en)?|months?|"
-    r"jaar|jaren|years?"
-    r")\b",
+    rf"\b(?P<n>\d+)\s*(?P<u>{_DURATION_UNITS_REGEX})\b",
     re.IGNORECASE,
 )
 
@@ -263,11 +263,11 @@ VAGUE_TIME_PATTERN = re.compile(
 
 RANGE_PATTERNS = [
     re.compile(
-        r"\b(tussen)\b\s+(?P<a>[^,.;]+?)\s+\b(en)\b\s+(?P<b>[^,.;]+)",
+        r"\b(tussen)\b\s+(?P<a>[^,.;!\n]+?)\s+\b(en)\b\s+(?P<b>(?:(?![,.;!\n]).)+)",
         re.IGNORECASE,
     ),
     re.compile(
-        r"\b(van|from)\b\s+(?P<a>[^,.;]+?)\s+\b(tot|t/m|tm|to|until)\b\s+(?P<b>[^,.;]+)",
+        r"\b(van|from)\b\s+(?P<a>[^,.;!\n]+?)\s+\b(tot|t/m|tm|to|until)\b\s+(?P<b>(?:(?![,.;!\n]).)+)",
         re.IGNORECASE,
     ),
 ]
@@ -279,6 +279,7 @@ TIME_HINT_PATTERN = re.compile(
     r"("
     r"\b\d{1,2}:\d{2}\b|"
     r"\b\d{1,2}\.\d{2}\b|"
+    r"\b\d{1,2}[uh]\d{2}\b|"
     r"\b\d{1,2}\s*(am|pm)\b|"
     r"\b\d{1,2}\s*u\b|"
     r"\b\d{1,2}\s*uur\b|"

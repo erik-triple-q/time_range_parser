@@ -8,13 +8,13 @@ import logging
 
 import pendulum
 
-from ..vocabulary import DUTCH_NUMBER_WORDS, ENGLISH_NUMBER_WORDS, MONTH_NAMES
+from ..vocabulary import DUTCH_NUMBER_WORDS, ENGLISH_NUMBER_WORDS, MONTH_NAMES, ORDINALS
 from ..patterns import IN_DURATION_PATTERN, AGO_PATTERN, DUTCH_DAY_MONTH_PATTERN
 from .base import parse_number_word, normalize_duration_unit
 
 logger = logging.getLogger(__name__)
 
-_ALL_NUMBER_WORDS = {**DUTCH_NUMBER_WORDS, **ENGLISH_NUMBER_WORDS}
+_ALL_NUMBER_WORDS = {**DUTCH_NUMBER_WORDS, **ENGLISH_NUMBER_WORDS, **ORDINALS}
 
 
 def parse_in_duration(

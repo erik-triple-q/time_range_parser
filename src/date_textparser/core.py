@@ -74,25 +74,6 @@ from .patterns import (
 
 logger = logging.getLogger(__name__)
 
-_WEEKDAY_MAP_NL_EN: dict[str, int] = {
-    # nl
-    "maandag": 0,
-    "dinsdag": 1,
-    "woensdag": 2,
-    "donderdag": 3,
-    "vrijdag": 4,
-    "zaterdag": 5,
-    "zondag": 6,
-    # en
-    "monday": 0,
-    "tuesday": 1,
-    "wednesday": 2,
-    "thursday": 3,
-    "friday": 4,
-    "saturday": 5,
-    "sunday": 6,
-}
-
 NOW_KEYWORDS: set[str] = {"nu", "now", "sysdate"}
 
 
@@ -160,13 +141,23 @@ def _floor_to_seconds(dt: pendulum.DateTime) -> pendulum.DateTime:
     return dt.set(microsecond=0)
 
 
+def _safe_dateparser_parse(
+    text: str,
+    settings: dict[str, Any],
+) -> dt_datetime | None:
+    """Parse with dateparser, suppressing known deprecation warnings."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        return dateparser.parse(text, settings=settings, languages=["nl", "en"])
+
+
 def _is_plain_weekday(text: str) -> bool:
     t = (text or "").strip().lower()
-    return t in _WEEKDAY_MAP_NL_EN
+    return t in ALL_WEEKDAYS
 
 
 def _weekday_index(text: str) -> int | None:
-    return _WEEKDAY_MAP_NL_EN.get((text or "").strip().lower())
+    return ALL_WEEKDAYS.get((text or "").strip().lower())
 
 
 def _parse_dt(
@@ -195,33 +186,19 @@ def _parse_dt(
     # Clean up 'at' before time digits to help dateparser (e.g. "next friday at 3pm" -> "next friday 3pm")
     text_for_parser = re.sub(r"\bat\s+(?=\d)", "", normalized_text, flags=re.IGNORECASE)
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message="Parsing dates involving a day of month without a year specified",
-            category=DeprecationWarning,
-        )
-        dt = dateparser.parse(
-            text_for_parser,
-            settings=_dateparser_settings(tz, base, prefer_future),
-            languages=["nl", "en"],
-        )
+    dt = _safe_dateparser_parse(
+        text_for_parser,
+        settings=_dateparser_settings(tz, base, prefer_future),
+    )
 
     if dt is None:
         date_part = extract_date_part(text)
         if date_part != text:
             logger.debug(f"_parse_dt: trying extracted date part '{date_part}'")
-            with warnings.catch_warnings():
-                warnings.filterwarnings(
-                    "ignore",
-                    message="Parsing dates involving a day of month without a year specified",
-                    category=DeprecationWarning,
-                )
-                dt = dateparser.parse(
-                    date_part,
-                    settings=_dateparser_settings(tz, base, prefer_future),
-                    languages=["nl", "en"],
-                )
+            dt = _safe_dateparser_parse(
+                date_part,
+                settings=_dateparser_settings(tz, base, prefer_future),
+            )
 
     # Fallback: if dateparser failed completely, try strict weekday parsers again.
     # This handles cases where 'has_time' was True (so we skipped strict parsing initially),
@@ -238,13 +215,10 @@ def _parse_dt(
                     new_text = text[: m.start()] + f" {iso_date} " + text[m.end() :]
                     new_text = " ".join(new_text.split())
 
-                    with warnings.catch_warnings():
-                        warnings.filterwarnings("ignore", category=DeprecationWarning)
-                        dt_retry = dateparser.parse(
-                            new_text,
-                            settings=_dateparser_settings(tz, base, prefer_future),
-                            languages=["nl", "en"],
-                        )
+                    dt_retry = _safe_dateparser_parse(
+                        new_text,
+                        settings=_dateparser_settings(tz, base, prefer_future),
+                    )
                     if dt_retry:
                         if dt_retry.tzinfo is None:
                             result = pendulum.instance(dt_retry, tz=tz)
@@ -263,13 +237,10 @@ def _parse_dt(
                     new_text = text[: m.start()] + f" {iso_date} " + text[m.end() :]
                     new_text = " ".join(new_text.split())
 
-                    with warnings.catch_warnings():
-                        warnings.filterwarnings("ignore", category=DeprecationWarning)
-                        dt_retry = dateparser.parse(
-                            new_text,
-                            settings=_dateparser_settings(tz, base, prefer_future),
-                            languages=["nl", "en"],
-                        )
+                    dt_retry = _safe_dateparser_parse(
+                        new_text,
+                        settings=_dateparser_settings(tz, base, prefer_future),
+                    )
                     if dt_retry:
                         if dt_retry.tzinfo is None:
                             result = pendulum.instance(dt_retry, tz=tz)
