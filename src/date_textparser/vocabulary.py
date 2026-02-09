@@ -579,7 +579,7 @@ try:
     TIMEZONES: list[str] = _pytz.all_timezones
 except (ImportError, AttributeError):
     # Fallback to essential timezones if pytz is not available
-    TIMEZONES: list[str] = [
+    TIMEZONES = [
         "UTC",
         "Europe/Amsterdam",
         "America/New_York",

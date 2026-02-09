@@ -148,7 +148,9 @@ def _safe_dateparser_parse(
     """Parse with dateparser, suppressing known deprecation warnings."""
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        return dateparser.parse(text, settings=settings, languages=["nl", "en"])
+        result = dateparser.parse(text, settings=settings, languages=["nl", "en"])
+        # dateparser.parse returns datetime.datetime | None
+        return result if isinstance(result, dt_datetime) or result is None else None
 
 
 def _is_plain_weekday(text: str) -> bool:
@@ -546,7 +548,7 @@ def _parse_time_range_internal(
 
     # 2) Try specialized parsers (only if no explicit range was found)
     ParserFunc = Callable[
-        [str, pendulum.DateTime], "tuple[pendulum.DateTime, pendulum.DateTime] | None"
+        ..., "tuple[pendulum.DateTime, pendulum.DateTime] | None"
     ]
     specialized_parsers: list[tuple[str, ParserFunc]] = [
         ("quarter", parse_quarter),
