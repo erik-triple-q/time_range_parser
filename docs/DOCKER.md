@@ -17,37 +17,37 @@ This file contains the most used commands for development, Docker, and quick che
 docker compose up --build
 ```
 
-### Start (zonder rebuild)
+### Start (without rebuild)
 ```bash
 docker compose up
 ```
 
-### Detached (op de achtergrond)
+### Detached (in the background)
 ```bash
 docker compose up -d
 ```
 
-### Logs volgen
+### Follow logs
 ```bash
 docker compose logs -f
 ```
 
-Alleen één service:
+Only one service:
 ```bash
 docker compose logs -f date-textparser-mcp
 ```
 
-### Stoppen
+### Stop
 ```bash
 docker compose down
 ```
 
-### Stoppen + volumes opruimen
+### Stop + clean volumes
 ```bash
 docker compose down -v
 ```
 
-### Force rebuild (geen cache)
+### Force rebuild (no cache)
 ```bash
 docker compose build --no-cache
 docker compose up
@@ -58,7 +58,7 @@ docker compose up
 docker compose ps
 ```
 
-### Shell in de container (debug)
+### Shell in container (debug)
 ```bash
 docker compose exec date-textparser-mcp sh
 ```
@@ -67,35 +67,35 @@ docker compose exec date-textparser-mcp sh
 
 ## Health / Connectivity checks
 
-### Check of de server luistert (pas poort aan indien nodig)
+### Check if server is listening (adjust port if needed)
 ```bash
 curl -i http://localhost:9000/
 ```
 
-### SSE endpoint openzetten (verwacht stream output)
+### Open SSE endpoint (expect stream output)
 ```bash
 curl -N http://localhost:9000/sse
 ```
 
-Tip: stop met `CTRL+C`.
+Tip: stop with `CTRL+C`.
 
 ---
 
 ## MCP flow (SSE + messages)
 
-MCP over SSE werkt typisch zo:
+MCP over SSE typically works like this:
 1) Open SSE: `GET /sse`
-2) Lees `event: endpoint` → daar staat de `/messages/?session_id=...` URL
-3) POST JSON-RPC naar die messages URL
-4) Responses komen terug via de open SSE stream
+2) Read `event: endpoint` → it contains the `/messages/?session_id=...` URL
+3) POST JSON-RPC to that messages URL
+4) Responses come back via the open SSE stream
 
-### SSE openen en endpoint zien
+### Open SSE and see endpoint
 ```bash
 curl -N http://localhost:9000/sse
 ```
 
-### Voorbeeld: JSON-RPC initialize (POST naar messages URL)
-Vervang `SESSION_ID` met wat je uit het SSE `endpoint` event krijgt.
+### Example: JSON-RPC initialize (POST to messages URL)
+Replace `SESSION_ID` with what you get from the SSE `endpoint` event.
 
 ```bash
 curl -i \
@@ -112,9 +112,9 @@ curl -i \
   }'
 ```
 
-> Let op: vaak krijg je `202 Accepted`. De echte response komt via SSE.
+> Note: you often get `202 Accepted`. The actual response comes via SSE.
 
-### Daarna: initialized notification (geen id)
+### Then: initialized notification (no id)
 ```bash
 curl -i \
   -H "Content-Type: application/json" \
@@ -159,28 +159,28 @@ curl -i \
 
 ## Debugging / Troubleshooting
 
-### “ModuleNotFoundError: No module named …”
-- Check of je package echt geïnstalleerd wordt in de image (wheel/venv tijdens build).
-- Check je project layout (`src/<package_name>/__init__.py`).
+### "ModuleNotFoundError: No module named …"
+- Check if your package is actually installed in the image (wheel/venv during build).
+- Check your project layout (`src/<package_name>/__init__.py`).
 
-### “ClosedResourceError” / responses komen niet terug
-- SSE verbinding moet open blijven terwijl je POSTs doet.
-- Gebruik altijd de `messages` URL met de session_id die bij jouw SSE connectie hoort.
+### "ClosedResourceError" / responses not coming back
+- SSE connection must remain open while you do POSTs.
+- Always use the `messages` URL with the session_id that belongs to your SSE connection.
 
-### Poort gewijzigd?
-- Host-poort (links) komt uit `docker-compose.yml`, bv. `9000:8000`
-- Container-poort (rechts) is waar de app luistert.
+### Port changed?
+- Host port (left) comes from `docker-compose.yml`, e.g. `9000:8000`
+- Container port (right) is where the app listens.
 
 ---
 
-## Cleanup (ruimte terugwinnen)
+## Cleanup (reclaim space)
 
-### Oude images/containers opruimen
+### Clean up old images/containers
 ```bash
 docker system prune
 ```
 
-### Alles inclusief ongebruikte images/volumes (voorzichtig)
+### Everything including unused images/volumes (careful)
 ```bash
 docker system prune -a --volumes
 ```

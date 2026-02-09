@@ -23,15 +23,16 @@ def clean_cache_fixture():
     clear_cache()
 
 
-@patch("lib.external_time.httpx.Client")
-def test_get_local_timezone_from_ip_success(mock_client):
+@patch("lib.external_time._get_http_client")
+def test_get_local_timezone_from_ip_success(mock_get_client):
     # Enable API explicitly for this test
     with patch.dict(os.environ, {"USE_WORLDTIME_API": "true"}):
-        mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.get.return_value.json.return_value = {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get.return_value.json.return_value = {
             "timezone": "Europe/Amsterdam"
         }
-        mock_instance.get.return_value.raise_for_status = MagicMock()
+        mock_client.get.return_value.raise_for_status = MagicMock()
 
         result = get_local_timezone_from_ip()
         assert result == "Europe/Amsterdam"
@@ -49,14 +50,15 @@ def test_get_valid_timezones_static():
     assert "UTC" in result
 
 
-@patch("lib.external_time.httpx.Client")
-def test_get_current_time_from_api_success(mock_client):
+@patch("lib.external_time._get_http_client")
+def test_get_current_time_from_api_success(mock_get_client):
     with patch.dict(os.environ, {"USE_WORLDTIME_API": "true"}):
-        mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.get.return_value.json.return_value = {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get.return_value.json.return_value = {
             "datetime": "2026-01-01T12:00:00+01:00"
         }
-        mock_instance.get.return_value.raise_for_status = MagicMock()
+        mock_client.get.return_value.raise_for_status = MagicMock()
 
         result = get_current_time_from_api("Europe/Amsterdam")
         assert result == "2026-01-01T12:00:00+01:00"
@@ -74,18 +76,19 @@ def test_api_disabled_behavior():
 
 
 @patch("lib.external_time.logger")
-@patch("lib.external_time.httpx.Client")
-def test_get_current_time_from_api_http_error(mock_client, mock_logger):
+@patch("lib.external_time._get_http_client")
+def test_get_current_time_from_api_http_error(mock_get_client, mock_logger):
     """Test that HTTPStatusError is handled gracefully and logged."""
     with patch.dict(os.environ, {"USE_WORLDTIME_API": "true"}):
-        mock_instance = mock_client.return_value.__enter__.return_value
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
         # Create a mock request and response to simulate a 404
         mock_request = httpx.Request("GET", "http://fakeurl/api/timezone/Invalid/Zone")
         mock_response = httpx.Response(status_code=404, request=mock_request)
 
         # Configure the `raise_for_status` method on the returned response mock
-        mock_instance.get.return_value.raise_for_status.side_effect = httpx.HTTPStatusError(
+        mock_client.get.return_value.raise_for_status.side_effect = httpx.HTTPStatusError(
             "Client error '404 Not Found' for url 'http://fakeurl/api/timezone/Invalid/Zone'",
             request=mock_request,
             response=mock_response,

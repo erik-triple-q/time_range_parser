@@ -4,9 +4,38 @@ Dit document beschrijft (zo compleet mogelijk) welke zinnen, patronen en combina
 
 > Notatie:
 >
-> - “Hele dag” = `00:00:00` t/m `23:59:59` (seconds-only)
-> - “default duur” = `default_minutes` (standaard 60 minuten) wanneer alleen een starttijd gegeven is
-> - Timezone default = `Europe/Amsterdam` (IANA)
+> - "Hele dag" = `00:00:00` t/m `23:59:59` (seconds-only)
+> - "default duur" = `default_minutes` (standaard 60 minuten) wanneer alleen een starttijd gegeven is
+> - Default timezone = `Europe/Amsterdam` (IANA)
+
+---
+
+## Table of Contents
+
+1. [Relatieve dagen (NL/EN)](#1-relatieve-dagen-nlen)
+2. [Relatieve dag + tijd (NL/EN)](#2-relatieve-dag--tijd-nlen)
+3. [Weekdagen (NL/EN)](#3-weekdagen-nlen)
+4. [Weekdagen met modifiers (NL/EN)](#4-weekdagen-met-modifiers-nlen)
+5. [Weekdag + tijd](#5-weekdag--tijd)
+6. [Periodes (week/maand/jaar) (NL/EN)](#6-periodes-weekmaandjaar-nlen)
+7. [Expliciete tijdranges (NL/EN)](#7-expliciete-tijdranges-nlen)
+8. [Datumbereiken](#8-datumbereiken-tussen--en--van--tot-)
+9. [Ranges over middernacht](#9-ranges-over-middernacht)
+10. [Losse tijdstippen (zonder datum)](#10-losse-tijdstippen-zonder-datum)
+11. [Nederlandse spreektaal-tijden (heuristisch)](#11-nederlandse-spreektaal-tijden-heuristisch)
+12. [ISO datums](#12-iso-datums)
+13. [Europese datums (DD-MM-YYYY / DD/MM/YYYY)](#13-europese-datums-dd-mm-yyyy--ddmmyyyy)
+14. [Maandnamen (NL + afkortingen)](#14-maandnamen-nl--afkortingen)
+15. [Engelse maandnamen](#15-engelse-maandnamen)
+16. [Datums "in een zin" (extractie)](#16-datums-in-een-zin-extractie)
+17. [Duur-aanduidingen](#17-duur-aanduidingen)
+18. [Kwartalen (NL/EN)](#18-kwartalen-nlen)
+19. [Feestdagen (fixed)](#19-feestdagen-fixed)
+20. [Feestdagen (bewegend, o.b.v. Pasen)](#20-feestdagen-bewegend-obv-pasen)
+21. [Ordinale weekdagen](#21-ordinale-weekdagen-bijv-eerste-maandag-van-maart)
+22. [Parameters](#parameters)
+23. [Returnwaarden](#returnwaarden)
+24. [Bekende beperkingen & heuristiek](#bekende-beperkingen--heuristiek)
 
 ---
 

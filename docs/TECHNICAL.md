@@ -12,14 +12,7 @@ Parses natural language into a structured time range.
   - `text` (str): The input text (e.g., "tomorrow 3pm").
   - `timezone` (str, optional): IANA timezone (default: `Europe/Amsterdam`).
   - `now_iso` (str, optional): Reference time in ISO-8601 format.
-
-### `resolve_time_range_simple`
-
-Same as above, but returns a minimal JSON response (only start/end/timezone).
-
-### `resolve_time_range_debug`
-
-Returns detailed debug information, including internal assumptions made by the parser.
+  - `fiscal_start_month` (int, optional): Fiscal year start month (1-12, default: 1).
 
 ### `convert_timezone`
 
@@ -45,10 +38,57 @@ Calculates the duration between two natural language points in time.
 - **Arguments**:
   - `start` (str): Start expression (e.g., "now").
   - `end` (str): End expression (e.g., "next week").
+  - `timezone` (str, optional): IANA timezone (default: `Europe/Amsterdam`).
+  - `now_iso` (str, optional): Reference time in ISO-8601 format.
+
+### `get_dst_status`
+
+Get Daylight Saving Time (DST) information for a timezone. Returns whether DST is active and when the next transition occurs.
+
+- **Arguments**:
+  - `timezone` (str, optional): IANA timezone (default: `Europe/Amsterdam`).
+
+- **Returns**:
+  - `is_dst` (bool): Whether DST is currently active.
+  - `dst_abbreviation` (str): Current timezone abbreviation (e.g., "CET", "CEST").
+  - `dst_start` (str): When DST starts (ISO-8601).
+  - `dst_end` (str): When DST ends (ISO-8601).
+  - `utc_offset` (str): Current UTC offset (e.g., "+01:00").
+  - `raw_offset` (int): Base offset in seconds.
+
+### `get_calendar_info`
+
+Get calendar information like week number, day of year, and day of week. Useful for business logic (e.g., "What week is it?").
+
+- **Arguments**:
+  - `timezone` (str, optional): IANA timezone (default: `Europe/Amsterdam`).
+
+- **Returns**:
+  - `week_number` (int): ISO week number (1-53).
+  - `day_of_year` (int): Day of year (1-366).
+  - `day_of_week` (int): Day of week (0=Monday, 6=Sunday).
+  - `date` (str): Current date in YYYY-MM-DD format.
+  - `iso_week_date` (str): ISO week date format (e.g., "2026-W06").
+
+### `get_world_time`
+
+Get the current time for a specific city or timezone via WorldTimeAPI. Requires `USE_WORLDTIME_API=true` environment variable.
+
+- **Arguments**:
+  - `city` (str): City name or timezone (e.g., "New York", "London", "Europe/Amsterdam").
+
+- **Returns**:
+  - `current_time` (str): Current time in ISO-8601 format.
+  - `timezone` (str): Normalized IANA timezone.
+  - `utc_offset` (str): UTC offset (e.g., "-05:00").
+  - `dst` (bool): Whether DST is active.
+  - `week_number` (int): ISO week number.
+  - `day_of_year` (int): Day of year.
+  - `abbreviation` (str): Timezone abbreviation (e.g., "EST", "GMT").
 
 ### `server_info`
 
-Returns metadata about the server configuration.
+Returns metadata about the server configuration, including available tools and version information.
 
 ---
 
@@ -116,7 +156,7 @@ uv run python server_main.py --sse
 **Step 2: Run the test client**
 
 ```bash
-uv run python mcp_client_httpx.py
+uv run python examples/mcp_client_httpx.py
 ```
 
 ---

@@ -336,15 +336,22 @@ def _weekday_range_this_week(
 
 
 def _parse_relative_quarter(
-    text: str, now: pendulum.DateTime
+    text: str, now: pendulum.DateTime, fiscal_start_month: int = 1
 ) -> tuple[pendulum.DateTime, pendulum.DateTime] | None:
     """Handle 'vorig kwartaal', 'next quarter' explicitly."""
 
-    # Calculate start of current quarter manually as pendulum start_of("quarter") is not reliable
-    start_month = ((now.month - 1) // 3) * 3 + 1
+    # Calculate start of current quarter (fiscal or calendar)
+    # Adjust for fiscal year if fiscal_start_month != 1
+    adjusted_month = (now.month - fiscal_start_month) % 12
+    start_month = (adjusted_month // 3) * 3 + fiscal_start_month
+    if start_month > 12:
+        start_month -= 12
     current_q_start = now.replace(
         month=start_month, day=1, hour=0, minute=0, second=0, microsecond=0
     )
+    # Adjust year if we wrapped around
+    if now.month < fiscal_start_month and start_month >= fiscal_start_month:
+        current_q_start = current_q_start.subtract(years=1)
 
     # Past
     match = PAST_PERIOD_PATTERN.search(text)
@@ -381,6 +388,7 @@ def _parse_time_range_internal(
     tz: str,
     now: pendulum.DateTime,
     default_minutes: int = DEFAULT_EVENT_DURATION_MINUTES,
+    fiscal_start_month: int = 1,
 ) -> ParseResult:
     text = (text or "").strip().strip("'\"")
     if not text:
@@ -432,7 +440,11 @@ def _parse_time_range_internal(
     ]
 
     for kind, parser in specialized_parsers:
-        parsed = parser(text, now)
+        # Quarter parsers need fiscal_start_month parameter
+        if kind in ("quarter", "relative_quarter"):
+            parsed = parser(text, now, fiscal_start_month)
+        else:
+            parsed = parser(text, now)
         if parsed:
             s, e = parsed
             result = ParseResult(
@@ -703,6 +715,7 @@ def parse_time_range_full(
     tz: str = DEFAULT_TZ,
     now_iso: str | None = None,
     default_minutes: int = DEFAULT_EVENT_DURATION_MINUTES,
+    fiscal_start_month: int = 1,
 ) -> ParseResult:
     text = (text or "").strip()
     if not text:
@@ -710,7 +723,9 @@ def parse_time_range_full(
 
     tz = normalize_timezone(tz)
     now = _resolve_now(now_iso, tz)
-    return _parse_time_range_internal(text, tz, now, default_minutes=default_minutes)
+    return _parse_time_range_internal(
+        text, tz, now, default_minutes=default_minutes, fiscal_start_month=fiscal_start_month
+    )
 
 
 def convert_to_timezone(

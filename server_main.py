@@ -152,10 +152,12 @@ def resolve_time_range(
         return custom_result
 
     try:
-        # Note: parse_time_range_full needs to be updated to accept fiscal_start_month
         result = parse_time_range_full(
-            text=text, tz=final_tz, now_iso=final_now_iso
-        )  # TODO: Pass fiscal_start_month
+            text=text,
+            tz=final_tz,
+            now_iso=final_now_iso,
+            fiscal_start_month=fiscal_start_month,
+        )
 
         return {
             "input": text,

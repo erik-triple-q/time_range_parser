@@ -20,6 +20,18 @@ Thank you for your interest in contributing! This document provides guidelines f
    uv sync                    # Install all dependencies
    ```
 
+## Project Architecture
+
+For a comprehensive understanding of the codebase architecture, parsing flow, and design decisions, see [CLAUDE.md](../CLAUDE.md). This document covers:
+
+- Core parsing pipeline and waterfall strategy
+- Specialized parser modules and their responsibilities
+- Time resolution rules and deterministic parsing
+- Important patterns (Dutch time notation, weekday ranges, etc.)
+- Testing philosophy and file organization
+
+**Recommended reading** before making significant changes to the parser logic.
+
 ## Development Workflow
 
 ### Running Tests
