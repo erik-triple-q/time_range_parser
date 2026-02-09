@@ -415,47 +415,8 @@ def _parse_time_range_internal(
 
     normalized_text = normalize_dutch_time(text)
 
-    ParserFunc = Callable[
-        [str, pendulum.DateTime], "tuple[pendulum.DateTime, pendulum.DateTime] | None"
-    ]
-    specialized_parsers: list[tuple[str, ParserFunc]] = [
-        ("quarter", parse_quarter),
-        ("relative_quarter", _parse_relative_quarter),
-        ("year_boundary", parse_year_boundary),
-        ("week_number", parse_week_number),
-        ("half_year", parse_half_year),
-        ("ordinal_weekday", parse_ordinal_weekday),
-        ("compound_day", parse_compound_day),
-        ("season", parse_season),
-        ("moving_holiday", parse_moving_holiday),
-        ("holiday", parse_holiday),
-        ("weekend", parse_weekend),
-        ("past_period", parse_past_period),
-        ("future_period", parse_future_period),
-        ("in_duration", parse_in_duration),
-        ("ago", parse_ago),
-        ("dutch_day_month", parse_dutch_day_month),
-        ("month_expr", parse_month_expr),
-        ("vague_time", parse_vague_time),
-    ]
-
-    for kind, parser in specialized_parsers:
-        # Quarter parsers need fiscal_start_month parameter
-        if kind in ("quarter", "relative_quarter"):
-            parsed = parser(text, now, fiscal_start_month)
-        else:
-            parsed = parser(text, now)
-        if parsed:
-            s, e = parsed
-            result = ParseResult(
-                start=s,
-                end=e,
-                timezone=tz,
-                assumptions={"kind": kind, "base_now": now.to_iso8601_string()},
-            )
-            return _finalize_result(result)
-
-    # 1) Explicit range
+    # 1) Explicit range (check FIRST before specialized parsers)
+    # This prevents specialized parsers from matching partial dates in ranges like "1 nov 2024 tot 12 dec 2025"
     rng = None
     for pattern in RANGE_PATTERNS:
         m = pattern.search(normalized_text)
@@ -583,7 +544,48 @@ def _parse_time_range_internal(
         )
         return _finalize_result(result)
 
-    # 2) Single moment/period
+    # 2) Try specialized parsers (only if no explicit range was found)
+    ParserFunc = Callable[
+        [str, pendulum.DateTime], "tuple[pendulum.DateTime, pendulum.DateTime] | None"
+    ]
+    specialized_parsers: list[tuple[str, ParserFunc]] = [
+        ("quarter", parse_quarter),
+        ("relative_quarter", _parse_relative_quarter),
+        ("year_boundary", parse_year_boundary),
+        ("week_number", parse_week_number),
+        ("half_year", parse_half_year),
+        ("ordinal_weekday", parse_ordinal_weekday),
+        ("compound_day", parse_compound_day),
+        ("season", parse_season),
+        ("moving_holiday", parse_moving_holiday),
+        ("holiday", parse_holiday),
+        ("weekend", parse_weekend),
+        ("past_period", parse_past_period),
+        ("future_period", parse_future_period),
+        ("in_duration", parse_in_duration),
+        ("ago", parse_ago),
+        ("dutch_day_month", parse_dutch_day_month),
+        ("month_expr", parse_month_expr),
+        ("vague_time", parse_vague_time),
+    ]
+
+    for kind, parser in specialized_parsers:
+        # Quarter parsers need fiscal_start_month parameter
+        if kind in ("quarter", "relative_quarter"):
+            parsed = parser(text, now, fiscal_start_month)
+        else:
+            parsed = parser(text, now)
+        if parsed:
+            s, e = parsed
+            result = ParseResult(
+                start=s,
+                end=e,
+                timezone=tz,
+                assumptions={"kind": kind, "base_now": now.to_iso8601_string()},
+            )
+            return _finalize_result(result)
+
+    # 3) Single moment/period
     start_parsed = _parse_dt(normalized_text, tz, base=now, prefer_future=True)
     if start_parsed is None:
         raise ValueError(f"Kon tekst niet parsen: {text!r}")
@@ -724,7 +726,11 @@ def parse_time_range_full(
     tz = normalize_timezone(tz)
     now = _resolve_now(now_iso, tz)
     return _parse_time_range_internal(
-        text, tz, now, default_minutes=default_minutes, fiscal_start_month=fiscal_start_month
+        text,
+        tz,
+        now,
+        default_minutes=default_minutes,
+        fiscal_start_month=fiscal_start_month,
     )
 
 

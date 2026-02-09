@@ -370,10 +370,7 @@ MONTH_NAMES: dict[str, int] = {
     "june": 6,
     "july": 7,
     "august": 8,
-    "september": 9,
     "october": 10,
-    "november": 11,
-    "december": 12,
     # English abbreviated
     "sept": 9,
     "oct": 10,
@@ -578,6 +575,7 @@ RECURRENCE_KEYWORDS: dict[str, str] = {
 # Use pytz's comprehensive timezone list (more complete and always up-to-date)
 try:
     import pytz as _pytz
+
     TIMEZONES: list[str] = _pytz.all_timezones
 except (ImportError, AttributeError):
     # Fallback to essential timezones if pytz is not available

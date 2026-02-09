@@ -154,6 +154,32 @@ class TestEdgeCaseInputs:
         assert result[0].day == expected_day
 
 
+class TestSentenceExtraction:
+    """Test extraction of time expressions from full sentences."""
+
+    def test_last_month_in_question(self):
+        """'last month' should be extracted from questions."""
+        result = parse_time_range_full("What was the revenue last month?")
+        assert result.start.month == 1  # January (if now is February)
+        assert result.start.year == 2026
+
+    def test_last_year_in_question(self):
+        """'last year' should be extracted from questions."""
+        result = parse_time_range_full("Show me data from last year")
+        assert result.start.year == 2025
+        assert result.end.year == 2025
+
+    def test_last_quarter_in_phrase(self):
+        """'last quarter' should be extracted from phrases."""
+        result = parse_time_range_full("sales last quarter")
+        assert result.assumptions["kind"] == "relative_quarter"
+
+    def test_next_month_in_question(self):
+        """'next month' should be extracted from questions."""
+        result = parse_time_range_full("What will be the forecast next month?")
+        assert result.start.month == 3  # March (if now is February)
+
+
 class TestNowIsoEdgeCases:
     """Test edge cases for now_iso parameter."""
 
@@ -182,3 +208,46 @@ class TestNowIsoEdgeCases:
         assert result.start.year == 2026
         assert result.start.month == 1
         assert result.start.day == 31
+
+
+class TestRangeWithoutVanPrefix:
+    """Test explicit range patterns without 'van' prefix (regression test for bug)."""
+
+    def test_date_tot_date_without_van(self):
+        """Range like '1 nov 2024 tot 12 dec 2025' should work without 'van' prefix."""
+        result = parse_time_range_full(
+            "1 nov 2024 tot 12 dec 2025", now_iso="2026-01-30T12:00:00+01:00"
+        )
+        assert result.start.year == 2024
+        assert result.start.month == 11
+        assert result.start.day == 1
+        assert result.end.year == 2025
+        assert result.end.month == 12
+        assert result.end.day == 12
+        assert result.assumptions["kind"] == "explicit_range"
+
+    def test_date_tot_date_with_van(self):
+        """Range like 'van 1 nov 2024 tot 12 dec 2025' should still work with 'van'."""
+        result = parse_time_range_full(
+            "van 1 nov 2024 tot 12 dec 2025", now_iso="2026-01-30T12:00:00+01:00"
+        )
+        assert result.start.year == 2024
+        assert result.start.month == 11
+        assert result.start.day == 1
+        assert result.end.year == 2025
+        assert result.end.month == 12
+        assert result.end.day == 12
+        assert result.assumptions["kind"] == "explicit_range"
+
+    def test_short_date_range_tot(self):
+        """Range like '1 mei tot 5 mei' without year should work."""
+        result = parse_time_range_full(
+            "1 mei tot 5 mei", now_iso="2026-01-30T12:00:00+01:00"
+        )
+        assert result.start.year == 2026
+        assert result.start.month == 5
+        assert result.start.day == 1
+        assert result.end.year == 2026
+        assert result.end.month == 5
+        assert result.end.day == 5
+        assert result.assumptions["kind"] == "explicit_range"

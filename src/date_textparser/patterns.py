@@ -267,7 +267,7 @@ RANGE_PATTERNS = [
         re.IGNORECASE,
     ),
     re.compile(
-        r"\b(van|from)\b\s+(?P<a>[^,.;!\n]+?)\s+\b(tot|t/m|tm|to|until)\b\s+(?P<b>(?:(?![,.;!\n]).)+)",
+        r"(?:\b(van|from)\b\s+)?(?P<a>[^,.;!\n]+?)\s+\b(tot|t/m|tm|to|until)\b\s+(?P<b>(?:(?![,.;!\n]).)+)",
         re.IGNORECASE,
     ),
 ]
@@ -320,9 +320,10 @@ DATE_EXTRACT_PATTERN = re.compile(
     r"(?:(?:van|of)\s+)?"
     r"(?:" + _MONTH_NAMES_REGEX + r")"
     r"(?:\s+\d{4})?\b|"
-    r"\b(?:volgende|komende|aanstaande|vorige|afgelopen|next|last|previous)\s+"
+    r"\b(?:volgende|komende|aanstaande|vorige|afgelopen|laatste|next|last|previous)\s+"
     r"(?:maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|"
-    r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|week)\b|"
+    r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+    r"week|maand|month|jaar|year|kwartaal|quarter)\b|"
     r"\b(?:maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|"
     r"monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|"
     r"\b(?:vandaag|morgen|overmorgen|gisteren|today|tomorrow|yesterday)\b"

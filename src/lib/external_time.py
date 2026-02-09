@@ -54,7 +54,9 @@ def _load_cache() -> None:
     try:
         os.makedirs(CACHE_DIR, exist_ok=True)
     except OSError as e:
-        logger.debug(f"Could not create cache directory {CACHE_DIR}: {e}. Cache will be in-memory only.")
+        logger.debug(
+            f"Could not create cache directory {CACHE_DIR}: {e}. Cache will be in-memory only."
+        )
         _CACHE_LOADED = True
         return
 
