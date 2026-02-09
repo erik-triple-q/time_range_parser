@@ -5,11 +5,12 @@ import time
 from typing import Any
 import sys
 import os
+import httpx
 
 from mcp_sse_client import McpSseClient
 
-BASE_URL = "http://localhost:9000"
-SSE_URL = f"{BASE_URL}/sse"
+BASE_URL = "http://localhost:9000/mcp"
+SSE_URL = f"{BASE_URL}/sse"  # This is for reference; McpSseClient uses BASE_URL
 
 
 class MarkdownReporter:
@@ -120,6 +121,22 @@ def main() -> None:
     reporter = MarkdownReporter()
     reporter.header(1, "MCP Client Test Report")
     reporter.text(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    # 0. Health Check
+    reporter.header(2, "0. Health Check")
+    # Derive root URL from BASE_URL which is http://.../mcp
+    root_url = BASE_URL.removesuffix("/mcp")
+    health_url = f"{root_url}/health"
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            r = client.get(health_url)
+            r.raise_for_status()
+            health_data = r.json()
+            reporter.text(f"✅ Health check passed: `{health_url}`")
+            reporter.code_block(json.dumps(health_data, indent=2))
+    except Exception as e:
+        reporter.text(f"❌ Health check failed for `{health_url}`:")
+        reporter.code_block(str(e), lang="text")
 
     try:
         c = McpSseClient(BASE_URL)

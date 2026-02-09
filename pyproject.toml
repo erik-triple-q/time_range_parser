@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 
 dependencies = [
     "dateparser>=1.2.2",
+    "fastapi>=0.128.0",
     "httpx>=0.28.1",
     "mcp>=1.26.0",
     "pendulum>=3.1.0",

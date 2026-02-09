@@ -7,13 +7,14 @@ services:
     volumes:
       - dateparser_cache:/cache
     init: true
-    command: python server_main.py --sse
+    command: python server_main.py
     environment:
       TZ: ${TZ:-Europe/Amsterdam}
       HOST: ${HOST:-0.0.0.0}
       PORT: ${PORT:-9000}
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       USE_WORLDTIME_API: ${USE_WORLDTIME_API:-false}
+      TRANSPORT_TYPE: ${TRANSPORT_TYPE:-sse}
       CACHE_DIR: /cache
 
 volumes:

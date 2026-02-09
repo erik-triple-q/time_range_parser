@@ -96,37 +96,44 @@ def clear_cache() -> None:
             logger.warning(f"Could not remove cache file {CACHE_FILE}. Error: {e}")
 
 
-def get_local_timezone_from_ip() -> str | None:
+def get_ip_info() -> dict[str, Any] | None:
     """
-    Detects the server's timezone based on its public IP using WorldTimeAPI.
-    Returns the IANA timezone string (e.g., "Europe/Amsterdam") or None if failed.
-    Results are cached for 1 hour.
+    Fetches detailed time and location info based on public IP via WorldTimeAPI.
+    Returns dict with client_ip, timezone, datetime, etc.
     """
     if not _is_api_enabled():
         logger.debug("WorldTimeAPI is disabled by USE_WORLDTIME_API flag.")
         return None
 
-    cache_key = "local_timezone_ip"
+    cache_key = "ip_info_full"
     cached = _get_from_cache(cache_key, TTL_IP_TIMEZONE)
     if cached:
-        logger.info(f"Retrieved local timezone '{cached}' from cache.")
-        return str(cached)
+        return dict(cached)
 
     try:
         # Set a short timeout to avoid blocking startup too long
-        with httpx.Client(timeout=2.0) as client:
+        with httpx.Client(timeout=2.0, http2=False) as client:
             response = client.get(f"{WORLD_TIME_API_BASE}/ip")
             response.raise_for_status()
             data = response.json()
             if isinstance(data, dict):
-                tz = data.get("timezone")
-                if isinstance(tz, str):
-                    _save_to_cache(cache_key, tz)
-                    return tz
+                _save_to_cache(cache_key, data)
+                return data
             return None
     except Exception as e:
-        logger.warning(f"Failed to detect local timezone via WorldTimeAPI: {e}")
+        logger.warning(f"Failed to fetch IP info via WorldTimeAPI: {e}")
         return None
+
+
+def get_local_timezone_from_ip() -> str | None:
+    """
+    Detects the server's timezone based on its public IP.
+    Returns the IANA timezone string (e.g., "Europe/Amsterdam") or None if failed.
+    """
+    data = get_ip_info()
+    if data and "timezone" in data:
+        return str(data["timezone"])
+    return None
 
 
 def get_valid_timezones() -> list[str]:
@@ -141,7 +148,7 @@ def get_valid_timezones() -> list[str]:
 def _fetch_timezone_data(timezone: str) -> dict[str, Any] | None:
     """Helper to fetch raw timezone data from API with error handling."""
     try:
-        with httpx.Client(timeout=5.0) as client:
+        with httpx.Client(timeout=5.0, http2=False) as client:
             response = client.get(f"{WORLD_TIME_API_BASE}/timezone/{timezone}")
             response.raise_for_status()
             data = response.json()
