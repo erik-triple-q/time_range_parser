@@ -1,3 +1,15 @@
+"""
+MCP Client Test (using requests library) - Alternative SSE client implementation.
+
+IMPORTANT: This script requires the MCP server to be running first in SSE mode.
+
+Start the server in a separate terminal:
+    uv run python server_main.py --sse
+
+Then run this test:
+    uv run python examples/mcp_client_request.py
+"""
+
 import json
 import sys
 import threading
@@ -13,7 +25,7 @@ except ImportError:
 HOST = "localhost"
 PORT = 9000
 BASE_URL = f"http://{HOST}:{PORT}"
-SSE_URL = f"{BASE_URL}/sse"
+SSE_URL = f"{BASE_URL}/mcp/sse"
 
 def main():
     print(f"🔵 Starten van MCP flow test op {BASE_URL}...")

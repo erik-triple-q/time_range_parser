@@ -1,3 +1,15 @@
+"""
+MCP Client Test - Comprehensive integration test for the MCP server.
+
+IMPORTANT: This script requires the MCP server to be running first in SSE mode.
+
+Start the server in a separate terminal:
+    uv run python server_main.py --sse
+
+Then run this test:
+    uv run python examples/mcp_client_httpx.py
+"""
+
 from __future__ import annotations
 
 import json
@@ -9,8 +21,10 @@ import httpx
 
 from mcp_sse_client import McpSseClient
 
-BASE_URL = "http://localhost:9000/mcp"
-SSE_URL = f"{BASE_URL}/sse"  # This is for reference; McpSseClient uses BASE_URL
+# Server root URL (MCP is mounted at /mcp)
+SERVER_ROOT = "http://localhost:9000"
+BASE_URL = f"{SERVER_ROOT}/mcp"
+SSE_URL = f"{BASE_URL}/sse"  # This is for reference; we'll override in the client
 
 
 class MarkdownReporter:
@@ -124,9 +138,7 @@ def main() -> None:
 
     # 0. Health Check
     reporter.header(2, "0. Health Check")
-    # Derive root URL from BASE_URL which is http://.../mcp
-    root_url = BASE_URL.removesuffix("/mcp")
-    health_url = f"{root_url}/health"
+    health_url = f"{SERVER_ROOT}/health"
     try:
         with httpx.Client(timeout=5.0) as client:
             r = client.get(health_url)
@@ -139,7 +151,9 @@ def main() -> None:
         reporter.code_block(str(e), lang="text")
 
     try:
-        c = McpSseClient(BASE_URL)
+        c = McpSseClient(SERVER_ROOT)
+        # Override SSE URL to point to /mcp/sse since the server mounts MCP at /mcp
+        c.sse_url = f"{SERVER_ROOT}/mcp/sse"
         c.connect()
         reporter.text(f"✅ Connected to `{BASE_URL}`")
     except (RuntimeError, TimeoutError) as e:

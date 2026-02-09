@@ -1,3 +1,16 @@
+"""
+Text-to-SQL Example - Demonstrates how the MCP server resolves time ranges for SQL queries.
+
+IMPORTANT: This script requires the MCP server to be running first in SSE mode.
+
+Start the server in a separate terminal:
+    uv run python server_main.py --sse
+
+Then run this example:
+    uv run python examples/text_to_sql_example.py
+    uv run python examples/text_to_sql_example.py "What was revenue last month?"
+"""
+
 import json
 import sys
 import os
@@ -86,7 +99,11 @@ def main():
 
     try:
         # McpSseClient handelt de SSE connectie en handshake af in __enter__
-        with McpSseClient(BASE_URL) as client:
+        client = McpSseClient(BASE_URL)
+        # Override SSE URL to point to /mcp/sse since the server mounts MCP at /mcp
+        client.sse_url = f"{BASE_URL}/mcp/sse"
+
+        with client:
 
             # 1. Initialize (Handshake)
             print("🔌 Initializing...")

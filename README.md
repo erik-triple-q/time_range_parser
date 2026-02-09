@@ -68,7 +68,28 @@ LLMs often struggle with calculating exact dates for "last month" or "Q1". This 
 3. **Server:** Returns `{"start": "2026-02-01T00:00:00", "end": "2026-02-28T23:59:59"}`
 4. **LLM:** Generates SQL: `SELECT sum(amount) FROM orders WHERE created_at BETWEEN '2026-02-01' AND '2026-02-28'`
 
-> **Try it out:** Run the included example script `uv run python examples/text_to_sql_example.py` to see this in action.
+> **Try it out:** See the example below to test this flow with the included demo script.
+
+### Running the Text-to-SQL Example
+
+To test the complete flow with the included example script, you'll need **two terminal windows**:
+
+**Terminal 1** - Start the server in SSE mode:
+```bash
+uv run python server_main.py --sse
+```
+
+Wait for the server to start (you'll see `Uvicorn running on http://0.0.0.0:9000`).
+
+**Terminal 2** - Run the example script:
+```bash
+uv run python examples/text_to_sql_example.py
+```
+
+You can also provide a custom query:
+```bash
+uv run python examples/text_to_sql_example.py "What was the revenue last month?"
+```
 
 ---
 
